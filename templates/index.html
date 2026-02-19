@@ -7,7 +7,14 @@
 		<h1>Forager's Assistant</h1>
 		<p>This is the start of the Forager's Assistant web app!</p>
 		<form action="/upload" method="POST" enctype="multipart/form-data">
-    		<input type="file" name="image" accept="image/*" required>
+    		<p>
+				<label>Submission:</label>
+				<input type="file" name="image" accept="image/*" required>
+			</p>
+			<p>
+				<label>Tag</label>
+				<input type="text" name="tag" required>
+			</p>
     		<button type="submit">Upload</button>
 		</form>
 	</body>

@@ -6,7 +6,7 @@ import os
 
 #loading enviornment variables.
 load_dotenv()
-MONGODB_URI = os.getenv("DATABASE_URL")
+MONGODB_URI = os.getenv("MONGODB_URI")
 UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER")
 
 #connecting to the database. 
@@ -22,26 +22,28 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.route("/")
 def start_index():
-    return render_template("index.html")
+	return render_template("index.html")
 
 #used to get a user iamge from the form. 
 @app.route("/upload", methods=["POST"])
 def upload_image():
     if "image" not in request.files:
-        return "No file part"
+        return "No file part", 400
 
     file = request.files["image"]
 
     if file.filename == "":
-        return "No selected file"
+        return "No selected file", 400
 
-    # Sanitize filename, makes sure we get the correct file type. 
     filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
 
-    # Save file into local upload folder. In server, they will be saved on the server. 
-    file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+    file.save(filepath)
 
-    return "Image uploaded successfully!"
+    data = {"image": filepath}
+    result = collection.insert_one(data)
+
+    return f"Image uploaded successfully!\nid: {result.inserted_id}", 200
 
 #start up app.
 app.run(host = "0.0.0.0", port=5050)
