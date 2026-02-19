@@ -12,8 +12,15 @@
 				<input type="file" name="image" accept="image/*" required>
 			</p>
 			<p>
-				<label>Tag</label>
-				<input type="text" name="tag" required>
+				<label>Species Tag:</label>
+				<input type="text" name="tag" value="{{ previous_tag or '' }}" required>
+			</p>
+			<p>
+				{% if error %}
+  					<div class="error-message">
+    					{{ error }}
+  					</div>
+				{% endif %}
 			</p>
     		<button type="submit">Upload</button>
 		</form>
