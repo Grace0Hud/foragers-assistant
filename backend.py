@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import *
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
@@ -47,6 +47,10 @@ def sanitize_tag(value: str) -> str:
 def start_index():
 	return render_template("index.html")
 
+@app.route("/gallery")
+def get_gallery():
+	return render_template("gallery.html")
+
 #used to get a user iamge from the form. 
 @app.route("/upload", methods=["POST"])
 def upload_image():
@@ -59,6 +63,7 @@ def upload_image():
     except ValueError as e:
         # Re-render form with error message
         print("Not a valid tag!")
+        #display error message on the page. 
         return render_template(
             "index.html",
             error=str(e),
@@ -67,20 +72,23 @@ def upload_image():
 
     if file.filename == "":
         return "No selected file", 400
-
+    
+	#ensure that the file name is not malicious
     filename = secure_filename(file.filename)
+    #then tack on an additional identifier so duplicate names aren't a problem. 
     filename = f"{uuid.uuid4().hex}_{filename}"
+    #save file to local path. 
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-
     file.save(filepath)
-
+    
+	#add image and tag to db. 
     data = {
 	"image": filepath,
     "tag": tag
     }
     result = collection.insert_one(data)
     print(f"Image Path uploaded. ID: \n {result.inserted_id}")
-    return render_template("index.html"), 200
+    return redirect(url_for("start_index")), 200
 
 #start up app.
 app.run(host = "0.0.0.0", port=5050)
