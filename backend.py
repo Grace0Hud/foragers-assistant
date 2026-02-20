@@ -49,7 +49,19 @@ def start_index():
 
 @app.route("/gallery")
 def get_gallery():
-	return render_template("gallery.html")
+    return render_template("gallery.html")
+
+@app.route("/gallery/search")
+def api_search():
+    print("searching!")
+    tag = request.args.get("tag", "")
+    images = collection.find({"tag": tag}, {"image": 1, "_id": 0})
+    filenames = [doc["image"] for doc in images]
+    return jsonify({"tag": tag, "images": filenames})
+
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 #used to get a user iamge from the form. 
 @app.route("/upload", methods=["POST"])
@@ -83,7 +95,7 @@ def upload_image():
     
 	#add image and tag to db. 
     data = {
-	"image": filepath,
+	"image": filename,
     "tag": tag
     }
     result = collection.insert_one(data)
