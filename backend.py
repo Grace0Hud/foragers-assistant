@@ -102,5 +102,6 @@ def upload_image():
     print(f"Image Path uploaded. ID: \n {result.inserted_id}")
     return redirect(url_for("start_index")), 200
 
+if __name__ == "__main__":
 #start up app.
-app.run(host = "0.0.0.0", port=5050)
+	app.run(host = "0.0.0.0", port=5050)
