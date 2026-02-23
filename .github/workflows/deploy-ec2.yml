@@ -70,7 +70,7 @@ jobs:
             sleep 1
 
             # Start using your existing nohup pattern
-            nohup python3 backend.py > log.txt 2>&1 & disown
+            nohup python3 backend.py > log.txt 2>&1 &
 
             echo "== Show last 50 log lines =="
             tail -n 50 log.txt || true
