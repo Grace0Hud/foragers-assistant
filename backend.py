@@ -96,7 +96,7 @@ def upload_image():
 	#add image and tag to db. 
     data = {
 	"image": filename,
-    "tag": tag
+    "tag": tag.lower()
     }
     result = collection.insert_one(data)
     print(f"Image Path uploaded. ID: \n {result.inserted_id}")
