@@ -43,11 +43,18 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_PORT || 22 }}
+
+          # Add these:
+          debug: true
+          timeout: 60s
+          command_timeout: 30m
+
           script_stop: true
           script: |
             set -euo pipefail
+            set -x
 
-            APP_DIR="$HOME/foragers-assistant"
+            APP_DIR="foragers-assistant"
             cd "$APP_DIR"
 
             echo "== Pull latest code =="
@@ -63,16 +70,18 @@ jobs:
               "$APP_DIR/.venv/bin/python" -m pip install -r requirements.txt
             fi
 
-            echo "== Restart backend.py safely =="
+            echo "== Kill old backend =="
             pkill -f "python.*backend\.py" || true
             sleep 1
+            pgrep -af "python.*backend\.py" || true
 
-            # Use venv python; append logs; detach stdin so it survives SSH session end
+            echo "== Start backend (detached) =="
+            # Important: use venv python, append logs, detach stdin
             nohup "$APP_DIR/.venv/bin/python" backend.py >> log.txt 2>&1 < /dev/null &
-            sleep 1
+            sleep 2
 
-            echo "== Verify running =="
-            pgrep -f "python.*backend\.py" >/dev/null || (echo "Backend failed to start"; tail -n 200 log.txt; exit 1)
+            echo "== Verify backend running =="
+            pgrep -af "python.*backend\.py" || (echo "Backend failed to start"; tail -n 200 log.txt; exit 1)
 
-            echo "== Show last 50 log lines =="
-            tail -n 50 log.txt || true
+            echo "== Last logs =="
+            tail -n 80 log.txt || true
