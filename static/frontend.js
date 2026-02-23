@@ -10,6 +10,7 @@ async function searchByTag(tag) {
         status.text("Enter a tag to search.");
         return;
     }
+	tag= tag.toLowerCase();
 
     status.text("Searching...");
 
@@ -41,7 +42,6 @@ async function searchByTag(tag) {
         status.text("Network error occurred.");
     }
 }
-
 // Run when page loads
 $(function () {
     $("#searchForm").on("submit", function (e) {
