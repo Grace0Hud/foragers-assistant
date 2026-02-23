@@ -52,36 +52,25 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            set -x
-
+            set -x            
             APP_DIR="$HOME/foragers-assistant"
+            APP_FILE="backend.py"
+            PY="$APP_DIR/.venv/bin/python"
             cd "$APP_DIR"
+            # Pull latest code (rebase is risky in automation; use a clean sync)
+            git fetch --all
+            git reset --hard origin/main
 
-            echo "== Pull latest code =="
-            git fetch --all --prune
-            git pull --rebase
-
-            echo "== Set up venv + install deps =="
-            if [ -f requirements.txt ]; then
-              if [ ! -d ".venv" ]; then
-                python3 -m venv .venv
-              fi
-              "$APP_DIR/.venv/bin/python" -m pip install --upgrade pip
-              "$APP_DIR/.venv/bin/python" -m pip install -r requirements.txt
+            # Ensure venv exists
+            if [ ! -d ".venv" ]; then
+              python3.12 -m venv .venv
             fi
 
-            echo "== Kill old backend =="
-            pkill -f "python.*backend\.py" || true
-            sleep 1
-            pgrep -af "python.*backend\.py" || true
+            # Stop previous process (if any) by matching the exact command
+            # This avoids killing unrelated python processes.
+            pkill -f "$PY $APP_FILE" || true
 
-            echo "== Start backend (detached) =="
-            # Important: use venv python, append logs, detach stdin
-            nohup "$APP_DIR/.venv/bin/python" backend.py >> log.txt 2>&1 < /dev/null &
-            sleep 2
+            # Start new process
+            nohup "$PY" "$APP_FILE" > log.txt 2>&1 &
 
-            echo "== Verify backend running =="
-            pgrep -af "python.*backend\.py" || (echo "Backend failed to start"; tail -n 200 log.txt; exit 1)
-
-            echo "== Last logs =="
-            tail -n 80 log.txt || true
+            echo "Started. Tail logs with: tail -n 200 -f $APP_DIR/log.txt"
