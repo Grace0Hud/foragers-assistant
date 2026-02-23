@@ -54,7 +54,7 @@ jobs:
             set -euo pipefail
             set -x
 
-            APP_DIR="foragers-assistant"
+            APP_DIR="$HOME/foragers-assistant"
             cd "$APP_DIR"
 
             echo "== Pull latest code =="
