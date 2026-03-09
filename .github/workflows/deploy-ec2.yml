@@ -57,20 +57,14 @@ jobs:
             APP_FILE="backend.py"
             PY="$APP_DIR/.venv/bin/python"
             cd "$APP_DIR"
-            # Pull latest code (rebase is risky in automation; use a clean sync)
             git fetch --all
             git reset --hard origin/main
-
-            # Ensure venv exists
             if [ ! -d ".venv" ]; then
-              python3.12 -m venv .venv
+              python3 -m venv .venv
             fi
-
-            # Stop previous process (if any) by matching the exact command
-            # This avoids killing unrelated python processes.
+            $APP_DIR/.venv/bin/pip install --upgrade pip --quiet
+            $APP_DIR/.venv/bin/pip install -r requirements.txt --quiet
             pkill -f "$PY $APP_FILE" || true
-
-            # Start new process
             nohup "$PY" "$APP_FILE" > log.txt 2>&1 &
-
             echo "Started. Tail logs with: tail -n 200 -f $APP_DIR/log.txt"
+            exit 0
