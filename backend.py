@@ -14,8 +14,9 @@ UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER")
 
 #connecting to the database. 
 client = MongoClient(MONGODB_URI)
-db = client["user-photos"]
-collection = db["user-data"]
+db = client["user-data"]
+photo_collection = db["user-photos"]
+
 #starting app.
 app = Flask(__name__)
 #configuring upload folder for images.
@@ -45,7 +46,7 @@ def sanitize_tag(value: str) -> str:
 
 @app.route("/")
 def start_index():
-	return render_template("index.html")
+	return render_template("upload.html")
 
 @app.route("/gallery")
 def get_gallery():
@@ -55,7 +56,7 @@ def get_gallery():
 def api_search():
     print("searching!")
     tag = request.args.get("tag", "")
-    images = collection.find({"tag": tag}, {"image": 1, "_id": 0})
+    images = photo_collection.find({"tag": tag}, {"image": 1, "_id": 0})
     filenames = [doc["image"] for doc in images]
     return jsonify({"tag": tag, "images": filenames})
 
@@ -77,7 +78,7 @@ def upload_image():
         print("Not a valid tag!")
         #display error message on the page. 
         return render_template(
-            "index.html",
+            "upload.html",
             error=str(e),
             previous_tag=request.form.get("tag", "")
         )
@@ -98,7 +99,7 @@ def upload_image():
 	"image": filename,
     "tag": tag.lower()
     }
-    result = collection.insert_one(data)
+    result = photo_collection.insert_one(data)
     print(f"Image Path uploaded. ID: \n {result.inserted_id}")
     return redirect(url_for("start_index")), 200
 
