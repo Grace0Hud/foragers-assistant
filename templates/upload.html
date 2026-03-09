@@ -4,6 +4,7 @@
 		<title>Forager's Assistant</title>
 		<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 		<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+		<script defer src="{{ url_for('static', filename='frontend.js') }}"></script>
 	</head>
 	<body>
 		<h1>Forager's Assistant</h1>
@@ -12,15 +13,31 @@
 			<a href="{{ url_for('get_gallery') }}">Review Foragables</a>
 			<a href="{{ url_for('logout') }}" class="nav-logout">Sign Out ({{ username }})</a>
 		</nav>
-		<form action="/upload" method="POST" enctype="multipart/form-data">
+		<form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
 			<p>
 				<label>Submission:</label>
-				<input type="file" name="image" accept="image/*" required>
+				<input type="file" name="image" id="imageInput" accept="image/*" required>
 			</p>
 			<p>
 				<label>Species Tag:</label>
 				<input type="text" name="tag" value="{{ previous_tag or '' }}" required>
 			</p>
+			<p>
+				<label>
+					Location
+					<span style="font-weight:400; font-size:0.9rem;">(optional — describe where you found it)</span>
+				</label>
+				<input type="text" name="location_label" id="location_label"
+				       maxlength="200" value="{{ previous_location or '' }}"
+				       placeholder="e.g. North trail near Oak Park">
+			</p>
+			<p id="geoStatus" style="color: #7D7ABC; font-size: 0.9rem; margin-top: -0.8rem;"></p>
+
+			<!-- Hidden inputs populated by JS from EXIF data or browser geolocation -->
+			<input type="hidden" name="latitude"   id="latitude">
+			<input type="hidden" name="longitude"  id="longitude">
+			<input type="hidden" name="geo_source" id="geo_source">
+
 			<p>
 				{% if error %}
 					<div class="error-message">

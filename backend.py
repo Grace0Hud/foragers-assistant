@@ -8,6 +8,9 @@ import os
 import uuid
 import re
 import bleach
+from PIL import Image
+from PIL.ExifTags import TAGS, GPSTAGS
+from datetime import datetime, timezone
 
 # Loading environment variables.
 load_dotenv()
@@ -23,22 +26,14 @@ user_collection = db["user-login"]
 
 # Starting app.
 app = Flask(__name__)
-# Secret key is required for Flask session signing.
-# Set SECRET_KEY in your .env file to a long random string.
 app.config["SECRET_KEY"] = SECRET_KEY
-# Configuring upload folder for images.
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-# Create folder if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
 def login_required(f):
-    """
-    Decorator that redirects unauthenticated users to the sign-in page.
-    Attach to any route that requires a logged-in session.
-    """
     @wraps(f)
     def decorated(*args, **kwargs):
         if "username" not in session:
@@ -50,7 +45,6 @@ def login_required(f):
 # ── Sanitization ──────────────────────────────────────────────────────────────
 
 def sanitize_field_key(key: str) -> str:
-    # Sanitizing a single key.
     if key.startswith("$") or "." in key:
         raise ValueError("Invalid field name")
     return key
@@ -65,19 +59,11 @@ def sanitize_tag(value: str) -> str:
         raise ValueError("Tag length invalid")
     if not TAG_RE.match(v):
         raise ValueError("Tag contains invalid characters")
-    # Remove HTML and scripts
     v = bleach.clean(v, tags=[], strip=True)
     return v
 
 
 def sanitize_username(value: str) -> str:
-    """
-    Sanitize a username:
-    - Must be a non-empty string
-    - Alphanumeric characters, underscores, and hyphens only
-    - Length between 1 and 64 characters
-    - Strip any HTML/scripts
-    """
     USERNAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
     if not isinstance(value, str):
         raise ValueError("Username must be a string")
@@ -86,24 +72,113 @@ def sanitize_username(value: str) -> str:
         raise ValueError("Username must be between 1 and 64 characters")
     if not USERNAME_RE.match(v):
         raise ValueError("Username may only contain letters, numbers, underscores, and hyphens")
-    # Strip any residual HTML
     v = bleach.clean(v, tags=[], strip=True)
     return v
 
 
 def sanitize_password(value: str) -> str:
-    """
-    Sanitize a password:
-    - Must be a non-empty string
-    - Length between 1 and 128 characters
-    - No structural validation beyond length (passwords are hashed server-side)
-    """
     if not isinstance(value, str):
         raise ValueError("Password must be a string")
     v = value.strip()
     if not (1 <= len(v) <= 128):
         raise ValueError("Password must be between 1 and 128 characters")
     return v
+
+
+def sanitize_location_label(value: str) -> str:
+    """
+    Sanitize a free-text location label.
+    - Must be a string
+    - 0–200 characters (optional field — empty string is allowed)
+    - Strips HTML/scripts via bleach
+    - Blocks NoSQL injection characters: $ at the start of words, and bare dots
+      that could be interpreted as field path traversal
+    """
+    if not isinstance(value, str):
+        raise ValueError("Location must be a string")
+    v = value.strip()
+    if len(v) > 200:
+        raise ValueError("Location label must be 200 characters or fewer")
+    # Block any token that starts with $ (MongoDB operator injection)
+    if re.search(r'(^|\s)\$', v):
+        raise ValueError("Location contains invalid characters")
+    # Strip HTML and scripts
+    v = bleach.clean(v, tags=[], strip=True)
+    return v
+
+
+def sanitize_coordinate(value: str, low: float, high: float) -> float:
+    """
+    Parse and range-check a coordinate string coming from a hidden form field.
+    Returns the float value, or raises ValueError.
+    """
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("Invalid coordinate value")
+    if not (low <= f <= high):
+        raise ValueError(f"Coordinate {f} out of range [{low}, {high}]")
+    return round(f, 7)
+
+
+# ── EXIF GPS extraction (server-side fallback / verification) ─────────────────
+
+def _dms_to_decimal(dms_values, ref: str) -> float:
+    """Convert a (degrees, minutes, seconds) EXIF tuple to a signed decimal."""
+    def to_float(v):
+        # Pillow may return an IFDRational or a plain tuple (num, denom)
+        try:
+            return float(v)
+        except TypeError:
+            return v[0] / v[1]
+
+    deg = to_float(dms_values[0])
+    mn  = to_float(dms_values[1])
+    sec = to_float(dms_values[2])
+    decimal = deg + mn / 60 + sec / 3600
+    if ref in ("S", "W"):
+        decimal = -decimal
+    return round(decimal, 7)
+
+
+def extract_exif_gps(filepath: str):
+    """
+    Open an image with Pillow and attempt to extract GPS coordinates from EXIF.
+    Returns a dict {"latitude": float, "longitude": float, "source": "exif"}
+    or None if GPS data is absent or the file is not a JPEG/TIFF.
+    """
+    try:
+        img = Image.open(filepath)
+        exif_data = img._getexif()
+        if exif_data is None:
+            return None
+
+        # Find the GPSInfo block
+        gps_info = None
+        for tag_id, val in exif_data.items():
+            tag_name = TAGS.get(tag_id, tag_id)
+            if tag_name == "GPSInfo":
+                gps_info = val
+                break
+
+        if not gps_info:
+            return None
+
+        # Decode the GPS sub-tags
+        gps = {}
+        for key, val in gps_info.items():
+            gps[GPSTAGS.get(key, key)] = val
+
+        if "GPSLatitude" not in gps or "GPSLongitude" not in gps:
+            return None
+
+        lat = _dms_to_decimal(gps["GPSLatitude"],  gps.get("GPSLatitudeRef",  "N"))
+        lon = _dms_to_decimal(gps["GPSLongitude"], gps.get("GPSLongitudeRef", "E"))
+
+        return {"latitude": lat, "longitude": lon, "source": "exif"}
+
+    except Exception:
+        return None
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -123,7 +198,6 @@ def get_gallery():
 @app.route("/gallery/search")
 @login_required
 def api_search():
-    print("searching!")
     raw_tag = request.args.get("tag", "")
     try:
         tag = sanitize_tag(raw_tag.lower())
@@ -143,7 +217,6 @@ def uploaded_file(filename):
 
 @app.route("/login", methods=["GET"])
 def signin_page():
-    # If already logged in, skip the sign-in page entirely
     if "username" in session:
         return redirect(url_for("start_index"))
     return render_template("signin.html")
@@ -151,7 +224,6 @@ def signin_page():
 
 @app.route("/login", methods=["POST"])
 def user_login():
-    # Sanitize and validate inputs
     try:
         username = sanitize_username(request.form.get("username", ""))
     except ValueError as e:
@@ -162,31 +234,24 @@ def user_login():
     except ValueError as e:
         return render_template("signin.html", error=str(e))
 
-    # Look up user in the database (exact match only — no regex, no operators)
     user = user_collection.find_one({"username": username})
 
-    # Use a generic error to avoid leaking whether the username exists
     if user is None or not check_password_hash(user.get("password", ""), password):
         return render_template("signin.html", error="Invalid username or password")
 
-    # Store the username in the server-side session cookie
     session["username"] = username
-    # Mark session as modified to ensure it is saved
     session.modified = True
-
     return redirect(url_for("start_index"))
 
 
 @app.route("/logout")
 def logout():
-    # Clear the entire session and redirect to sign-in
     session.clear()
     return redirect(url_for("signin_page"))
 
 
 @app.route("/signup", methods=["GET"])
 def signup_page():
-    # If already logged in, skip signup
     if "username" in session:
         return redirect(url_for("start_index"))
     return render_template("signup.html")
@@ -194,46 +259,36 @@ def signup_page():
 
 @app.route("/signup", methods=["POST"])
 def user_signup():
-    # Sanitize and validate username
     try:
         username = sanitize_username(request.form.get("username", ""))
     except ValueError as e:
         return render_template("signup.html", error=str(e),
                                previous_username=request.form.get("username", ""))
 
-    # Sanitize and validate password
     try:
         password = sanitize_password(request.form.get("password", ""))
     except ValueError as e:
         return render_template("signup.html", error=str(e),
                                previous_username=username)
 
-    # Confirm password matches
     confirm_password = request.form.get("confirm_password", "")
     if password != confirm_password:
         return render_template("signup.html", error="Passwords do not match.",
                                previous_username=username)
 
-    # Check username is not already taken (exact match, no operators)
     existing = user_collection.find_one({"username": username})
     if existing is not None:
         return render_template("signup.html", error="That username is already taken.",
                                previous_username=username)
 
-    # Hash the password before storing — never store plaintext passwords
     hashed = generate_password_hash(password)
-
     user_collection.insert_one({"username": username, "password": hashed})
-    print(f"New user registered: {username}")
 
-    # Log the new user in immediately after signup
     session["username"] = username
     session.modified = True
-
     return redirect(url_for("start_index"))
 
 
-# Used to get a user image from the form.
 @app.route("/upload", methods=["POST"])
 @login_required
 def upload_image():
@@ -241,38 +296,70 @@ def upload_image():
         return "No file part", 400
 
     file = request.files["image"]
+
+    # ── Validate tag ──────────────────────────────────────────────────────────
     try:
         tag = sanitize_tag(request.form.get("tag", ""))
     except ValueError as e:
-        print("Not a valid tag!")
-        return render_template(
-            "upload.html",
-            error=str(e),
-            previous_tag=request.form.get("tag", ""),
-            username=session["username"]
-        )
+        return render_template("upload.html", error=str(e),
+                               previous_tag=request.form.get("tag", ""),
+                               previous_location=request.form.get("location_label", ""),
+                               username=session["username"])
+
+    # ── Validate manual location label ────────────────────────────────────────
+    try:
+        location_label = sanitize_location_label(request.form.get("location_label", ""))
+    except ValueError as e:
+        return render_template("upload.html", error=str(e),
+                               previous_tag=tag,
+                               previous_location=request.form.get("location_label", ""),
+                               username=session["username"])
 
     if file.filename == "":
         return "No selected file", 400
 
-    # Ensure that the file name is not malicious
+    # ── Save the file ─────────────────────────────────────────────────────────
     filename = secure_filename(file.filename)
-    # Tack on an additional identifier so duplicate names aren't a problem.
     filename = f"{uuid.uuid4().hex}_{filename}"
-    # Save file to local path.
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(filepath)
 
-    # Add image and tag to db.
+    # ── Resolve coordinates ───────────────────────────────────────────────────
+    # Priority: EXIF from the saved file → browser geolocation from hidden fields
+    location_data = extract_exif_gps(filepath)
+
+    if location_data is None:
+        # Try the coordinates submitted by the browser via hidden fields
+        raw_lat = request.form.get("latitude", "").strip()
+        raw_lon = request.form.get("longitude", "").strip()
+        raw_src = request.form.get("geo_source", "").strip()
+
+        if raw_lat and raw_lon:
+            try:
+                lat = sanitize_coordinate(raw_lat, -90.0,  90.0)
+                lon = sanitize_coordinate(raw_lon, -180.0, 180.0)
+                # Only accept "browser" as a valid source label
+                source = "browser" if raw_src == "browser" else "unknown"
+                location_data = {"latitude": lat, "longitude": lon, "source": source}
+            except ValueError:
+                # Coordinates were malformed — store without them
+                location_data = None
+
+    # ── Build and insert document ─────────────────────────────────────────────
     data = {
-        "image": filename,
-        "tag": tag.lower()
+        "image":          filename,
+        "tag":            tag.lower(),
+        "location_label": location_label,                    # free-text description (may be "")
+        "location_geo":   location_data,                     # {"latitude", "longitude", "source"} or None
+        "uploaded_by":    session["username"],
+        "uploaded_at":    datetime.now(timezone.utc)         # UTC timestamp
     }
+
     result = photo_collection.insert_one(data)
-    print(f"Image Path uploaded. ID: \n {result.inserted_id}")
+    print(f"Image uploaded. ID: {result.inserted_id} | geo: {location_data}")
+
     return redirect(url_for("start_index"))
 
 
 if __name__ == "__main__":
-    # Start up app.
     app.run(host="0.0.0.0", port=5050)
