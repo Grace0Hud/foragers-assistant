@@ -188,8 +188,19 @@ button[type="submit"]:hover {
 h2{
 	color: var(--light);
 }
+/* Logout link pushed to the far right, styled in tertiary colour */
+nav a.nav-logout {
+  margin-left: auto;
+  background: var(--tertiary);
+}
+
+nav a.nav-logout:hover {
+  background: var(--secondary_dark);
+}
+
 /* Mobile: nav becomes stacked trail markers */
 @media (max-width: 560px){
   nav{ flex-wrap: wrap; }
   nav a{ width: 100%; text-align: center; }
+  nav a.nav-logout { margin-left: 0; }
 }

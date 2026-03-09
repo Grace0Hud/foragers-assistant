@@ -3,16 +3,17 @@
 	<head>
 		<title>Forager's Assistant</title>
 		<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    	<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+		<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 	</head>
 	<body>
 		<h1>Forager's Assistant</h1>
 		<nav>
-      		<a href="{{ url_for('start_index') }}">Home</a>
-      		<a href="{{ url_for('get_gallery') }}">Review Forigables</a>
+			<a href="{{ url_for('start_index') }}">Home</a>
+			<a href="{{ url_for('get_gallery') }}">Review Foragables</a>
+			<a href="{{ url_for('logout') }}" class="nav-logout">Sign Out ({{ username }})</a>
 		</nav>
 		<form action="/upload" method="POST" enctype="multipart/form-data">
-    		<p>
+			<p>
 				<label>Submission:</label>
 				<input type="file" name="image" accept="image/*" required>
 			</p>
@@ -22,12 +23,12 @@
 			</p>
 			<p>
 				{% if error %}
-  					<div class="error-message">
-    					{{ error }}
-  					</div>
+					<div class="error-message">
+						{{ error }}
+					</div>
 				{% endif %}
 			</p>
-    		<button type="submit">Upload</button>
+			<button type="submit">Upload</button>
 		</form>
 	</body>
- </html>
+</html>

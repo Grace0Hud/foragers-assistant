@@ -12,16 +12,24 @@
 			<a href="{{ url_for('get_gallery') }}">Review Foragables</a>
 		</nav>
 
-		<h2>Sign In</h2>
+		<h2>Create Account</h2>
 
-		<form action="/login" method="POST">
+		<form action="/signup" method="POST">
 			<p>
 				<label>Username:</label>
-				<input type="text" name="username" maxlength="64" autocomplete="username" required>
+				<input type="text" name="username" maxlength="64"
+				       value="{{ previous_username or '' }}"
+				       autocomplete="username" required>
 			</p>
 			<p>
 				<label>Password:</label>
-				<input type="password" name="password" maxlength="128" autocomplete="current-password" required>
+				<input type="password" name="password" maxlength="128"
+				       autocomplete="new-password" required>
+			</p>
+			<p>
+				<label>Confirm Password:</label>
+				<input type="password" name="confirm_password" maxlength="128"
+				       autocomplete="new-password" required>
 			</p>
 			<p>
 				{% if error %}
@@ -30,11 +38,11 @@
 					</div>
 				{% endif %}
 			</p>
-			<button type="submit">Sign In</button>
+			<button type="submit">Create Account</button>
 		</form>
 
 		<p style="text-align:center; color: var(--light); margin-top: -1rem;">
-			Don't have an account? <a href="{{ url_for('signup_page') }}" style="color: var(--secondary_light);">Create one</a>
+			Already have an account? <a href="{{ url_for('signin_page') }}" style="color: var(--secondary_light);">Sign in</a>
 		</p>
 	</body>
 </html>
