@@ -3,4 +3,3 @@ pymongo==4.6.1
 python-dotenv==1.0.1
 bleach==6.1.0
 Pillow==12.1.1
-pyopenssl==21.0.0
