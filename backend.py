@@ -209,8 +209,8 @@ def api_search():
         "image":          1,
         "tags":           1,
         "location_label": 1,
+        "manual_address": 1,
         "location_geo":   1,
-        "uploaded_by":    1,
         "uploaded_at":    1,
     }
 
@@ -322,7 +322,14 @@ def upload_image():
         return render_template("upload.html", error=str(e),
                                previous_tags=request.form.get("tags", ""),
                                previous_location=request.form.get("location_label", ""),
+                               previous_address=request.form.get("manual_address", ""),
                                username=session["username"])
+
+    # Manual address (used when user chose "Enter an address" mode)
+    try:
+        manual_address = sanitize_location_label(request.form.get("manual_address", ""))
+    except ValueError:
+        manual_address = ""
 
     if file.filename == "":
         return "No selected file", 400
@@ -351,6 +358,7 @@ def upload_image():
         "image":          filename,
         "tags":           tag_list,
         "location_label": location_label,
+        "manual_address": manual_address,    # user-typed address (may be "")
         "location_geo":   location_data,
         "uploaded_by":    session["username"],
         "uploaded_at":    datetime.now(timezone.utc)

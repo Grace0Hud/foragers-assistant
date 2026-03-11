@@ -184,9 +184,10 @@ function openDetail(item) {
         tagsEl.append(pill);
     });
 
-    // Location label (free-text, optional)
-    if (item.location_label) {
-        $("#detailLocationLabel").text(item.location_label);
+    // Location label and/or manual address (both optional)
+    const locationText = [item.manual_address, item.location_label].filter(Boolean).join(" — ");
+    if (locationText) {
+        $("#detailLocationLabel").text(locationText);
         $("#detailLocationLabelRow").show();
     } else {
         $("#detailLocationLabelRow").hide();
@@ -205,9 +206,7 @@ function openDetail(item) {
         $("#detailCoordsRow").hide();
     }
 
-    // Uploader and timestamp
-    $("#detailUploadedBy").text(item.uploaded_by || "Unknown");
-
+    // Timestamp
     if (item.uploaded_at) {
         const d = new Date(item.uploaded_at);
         $("#detailUploadedAt").text(d.toLocaleString());
@@ -305,6 +304,28 @@ function getBrowserLocation() {
 }
 
 
+// ── Address geocoding via Nominatim (OpenStreetMap, free, no API key) ─────────
+
+async function geocodeAddress(address) {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+    try {
+        const res = await fetch(url, {
+            headers: { "Accept-Language": "en", "User-Agent": "ForagersAssistant/1.0" }
+        });
+        const data = await res.json();
+        if (data && data.length > 0) {
+            return {
+                latitude:  parseFloat(data[0].lat).toFixed(7),
+                longitude: parseFloat(data[0].lon).toFixed(7)
+            };
+        }
+        return null;
+    } catch (_) {
+        return null;
+    }
+}
+
+
 // ── Page init ─────────────────────────────────────────────────────────────────
 
 $(function () {
@@ -321,16 +342,36 @@ $(function () {
             if (this.value.includes(",")) addUploadTagFromInput();
         });
 
+        // ── Location mode toggle ──────────────────────────────────────────────
+        $("input[name='location_mode']").on("change", function () {
+            if (this.value === "auto") {
+                $("#autoLocationSection").show();
+                $("#manualLocationSection").hide();
+            } else {
+                $("#autoLocationSection").hide();
+                $("#manualLocationSection").show();
+                $("#geoStatus").text("");
+            }
+        });
+
+        // Restore manual mode if form was re-rendered with a previous address
+        if ($("#manual_address").val()) {
+            $("#locModeManual").prop("checked", true).trigger("change");
+        }
+
         let exifCoords = null;
 
         $("#imageInput").on("change", async function () {
             const file = this.files[0];
             if (!file) return;
-            exifCoords = await extractExifGps(file);
-            $("#geoStatus").text(exifCoords
-                ? `📍 GPS found in photo (${exifCoords.latitude}, ${exifCoords.longitude})`
-                : "No GPS data in photo — will try device location on upload."
-            );
+            // Only attempt EXIF if in auto mode
+            if ($("#locModeAuto").is(":checked")) {
+                exifCoords = await extractExifGps(file);
+                $("#geoStatus").text(exifCoords
+                    ? `📍 GPS found in photo (${exifCoords.latitude}, ${exifCoords.longitude})`
+                    : "No GPS data in photo — will try device location on upload."
+                );
+            }
         });
 
         $("#uploadForm").on("submit", async function (e) {
@@ -345,21 +386,45 @@ $(function () {
             }
             $("#tagError").remove();
 
-            const statusEl = $("#geoStatus");
-            if (exifCoords) {
-                $("#latitude").val(exifCoords.latitude);
-                $("#longitude").val(exifCoords.longitude);
-                $("#geo_source").val("exif");
+            const mode = $("input[name='location_mode']:checked").val();
+
+            if (mode === "manual") {
+                // Geocode the address the user typed
+                const address = sanitizeInput($("#manual_address").val().trim());
+                if (address) {
+                    $("#geoStatus").show().text("Looking up address…");
+                    const coords = await geocodeAddress(address);
+                    if (coords) {
+                        $("#latitude").val(coords.latitude);
+                        $("#longitude").val(coords.longitude);
+                        $("#geo_source").val("address");
+                        $("#geoStatus").text(`📍 Found: ${coords.latitude}, ${coords.longitude}`);
+                    } else {
+                        // Address not found — upload without coordinates
+                        $("#latitude").val("");
+                        $("#longitude").val("");
+                        $("#geo_source").val("");
+                        $("#geoStatus").show().text("Address not found — uploading without coordinates.");
+                    }
+                }
             } else {
-                statusEl.text("Requesting device location…");
-                const bc = await getBrowserLocation();
-                if (bc) {
-                    $("#latitude").val(bc.latitude);
-                    $("#longitude").val(bc.longitude);
-                    $("#geo_source").val("browser");
-                    statusEl.text(`📍 Using device location (${bc.latitude}, ${bc.longitude})`);
+                // Auto mode: EXIF first, then browser geolocation
+                const statusEl = $("#geoStatus");
+                if (exifCoords) {
+                    $("#latitude").val(exifCoords.latitude);
+                    $("#longitude").val(exifCoords.longitude);
+                    $("#geo_source").val("exif");
                 } else {
-                    statusEl.text("Location unavailable — uploading without coordinates.");
+                    statusEl.text("Requesting device location…");
+                    const bc = await getBrowserLocation();
+                    if (bc) {
+                        $("#latitude").val(bc.latitude);
+                        $("#longitude").val(bc.longitude);
+                        $("#geo_source").val("browser");
+                        statusEl.text(`📍 Using device location (${bc.latitude}, ${bc.longitude})`);
+                    } else {
+                        statusEl.text("Location unavailable — uploading without coordinates.");
+                    }
                 }
             }
 
