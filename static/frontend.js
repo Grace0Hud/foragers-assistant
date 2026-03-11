@@ -8,7 +8,7 @@ function sanitizeInput(value) {
     return temp.innerHTML.trim();
 }
 
-// Validate a search tag: letters only, 1–128 chars.
+// Validate a single tag: letters only, 1–128 chars.
 function validateTag(tag) {
     if (!tag || tag.length === 0 || tag.length > 128) return false;
     return /^[A-Za-z]+$/.test(tag);
@@ -26,15 +26,86 @@ function validateCoordinate(lat, lon) {
 }
 
 
+// ── Tag pill management ───────────────────────────────────────────────────────
+
+const MAX_TAGS = 10;
+let tags = [];  // current list of validated tags
+
+// Re-render all pills in the pill box and sync the hidden input.
+function renderTags() {
+    const box   = document.getElementById("tagPillBox");
+    const input = document.getElementById("tagTextInput");
+
+    // Remove all existing pills (keep the text input)
+    box.querySelectorAll(".tag-pill").forEach(el => el.remove());
+
+    tags.forEach((tag, index) => {
+        const pill = document.createElement("span");
+        pill.className = "tag-pill";
+        pill.innerHTML = `${tag} <button type="button" aria-label="Remove ${tag}">&times;</button>`;
+        pill.querySelector("button").addEventListener("click", () => {
+            tags.splice(index, 1);
+            renderTags();
+        });
+        box.insertBefore(pill, input);
+    });
+
+    // Sync hidden field
+    document.getElementById("tagsHidden").value = tags.join(",");
+
+    // Hide text input if at limit
+    input.style.display = tags.length >= MAX_TAGS ? "none" : "";
+    input.placeholder = tags.length === 0
+        ? "Type a tag and press Enter or comma…"
+        : "Add another tag…";
+}
+
+// Attempt to add a tag from the current text input value.
+function addTagFromInput() {
+    const input    = document.getElementById("tagTextInput");
+    const raw      = sanitizeInput(input.value).toLowerCase().replace(/,/g, "").trim();
+
+    if (!raw) return;
+
+    if (!validateTag(raw)) {
+        // Flash the border red briefly to signal invalid input
+        input.style.borderBottom = "2px solid #C06E52";
+        setTimeout(() => input.style.borderBottom = "", 1000);
+        input.value = "";
+        return;
+    }
+
+    if (tags.includes(raw)) {
+        input.value = "";
+        return;
+    }
+
+    if (tags.length >= MAX_TAGS) {
+        input.value = "";
+        return;
+    }
+
+    tags.push(raw);
+    input.value = "";
+    renderTags();
+}
+
+// Pre-populate pills if the form is re-rendered with previous_tags (on error).
+function initTagsFromHidden() {
+    const hidden = document.getElementById("tagsHidden");
+    if (!hidden || !hidden.value) return;
+    hidden.value.split(",").forEach(t => {
+        const clean = t.trim().toLowerCase();
+        if (clean && validateTag(clean) && !tags.includes(clean)) {
+            tags.push(clean);
+        }
+    });
+    renderTags();
+}
+
+
 // ── EXIF GPS extraction ───────────────────────────────────────────────────────
 
-/**
- * Attempt to read GPS coordinates from a JPEG file's EXIF data.
- * Returns { latitude, longitude } or null if not found / not a JPEG.
- *
- * We parse the raw binary ourselves — no external library needed.
- * EXIF is only present in JPEG (FF D8) files.
- */
 function extractExifGps(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -44,7 +115,6 @@ function extractExifGps(file) {
                 const buf  = e.target.result;
                 const view = new DataView(buf);
 
-                // Must start with JPEG SOI marker FF D8
                 if (view.getUint16(0) !== 0xFFD8) { resolve(null); return; }
 
                 let offset = 2;
@@ -52,35 +122,27 @@ function extractExifGps(file) {
                     const marker = view.getUint16(offset);
                     offset += 2;
 
-                    // APP1 marker (0xFFE1) contains EXIF
                     if (marker === 0xFFE1) {
-                        const segLen  = view.getUint16(offset);
-                        // Check for "Exif\0\0" header
                         const exifStr = String.fromCharCode(
-                            view.getUint8(offset + 2),
-                            view.getUint8(offset + 3),
-                            view.getUint8(offset + 4),
-                            view.getUint8(offset + 5)
+                            view.getUint8(offset + 2), view.getUint8(offset + 3),
+                            view.getUint8(offset + 4), view.getUint8(offset + 5)
                         );
                         if (exifStr !== "Exif") { resolve(null); return; }
 
-                        // TIFF header starts at offset + 8 (after length word + "Exif\0\0")
                         const tiffStart = offset + 8;
                         const endian    = view.getUint16(tiffStart);
-                        const littleEnd = (endian === 0x4949); // "II" = little-endian
+                        const littleEnd = (endian === 0x4949);
 
                         const getUint16 = (o) => view.getUint16(tiffStart + o, littleEnd);
                         const getUint32 = (o) => view.getUint32(tiffStart + o, littleEnd);
 
-                        // Walk IFD0
                         const ifd0Offset = getUint32(4);
                         const ifd0Count  = getUint16(ifd0Offset);
                         let   gpsIfdOffset = null;
 
                         for (let i = 0; i < ifd0Count; i++) {
                             const entryOffset = ifd0Offset + 2 + i * 12;
-                            const tag = getUint16(entryOffset);
-                            if (tag === 0x8825) { // GPSInfo IFD pointer
+                            if (getUint16(entryOffset) === 0x8825) {
                                 gpsIfdOffset = getUint32(entryOffset + 8);
                                 break;
                             }
@@ -88,27 +150,22 @@ function extractExifGps(file) {
 
                         if (gpsIfdOffset === null) { resolve(null); return; }
 
-                        // Read GPS IFD entries
                         const gpsCount = getUint16(gpsIfdOffset);
                         const gps = {};
 
                         for (let i = 0; i < gpsCount; i++) {
                             const entryOffset = gpsIfdOffset + 2 + i * 12;
                             const tag    = getUint16(entryOffset);
-                            const type   = getUint16(entryOffset + 2);
-                            const count  = getUint32(entryOffset + 4);
                             const valOff = entryOffset + 8;
 
-                            // Tags: 1=LatRef, 2=Lat, 3=LonRef, 4=Lon
                             if (tag === 1 || tag === 3) {
                                 gps[tag] = String.fromCharCode(view.getUint8(tiffStart + getUint32(valOff)));
                             }
                             if (tag === 2 || tag === 4) {
-                                // RATIONAL array: degrees, minutes, seconds
                                 const dataOffset = getUint32(valOff);
-                                const deg = getUint32(dataOffset)     / getUint32(dataOffset + 4);
-                                const min = getUint32(dataOffset + 8) / getUint32(dataOffset + 12);
-                                const sec = getUint32(dataOffset + 16)/ getUint32(dataOffset + 20);
+                                const deg = getUint32(dataOffset)      / getUint32(dataOffset + 4);
+                                const min = getUint32(dataOffset + 8)  / getUint32(dataOffset + 12);
+                                const sec = getUint32(dataOffset + 16) / getUint32(dataOffset + 20);
                                 gps[tag] = deg + min / 60 + sec / 3600;
                             }
                         }
@@ -126,18 +183,14 @@ function extractExifGps(file) {
                         return;
                     }
 
-                    // Skip non-APP1 segments
                     if ((marker & 0xFF00) !== 0xFF00) { resolve(null); return; }
                     offset += view.getUint16(offset);
                 }
                 resolve(null);
-            } catch (_) {
-                resolve(null);
-            }
+            } catch (_) { resolve(null); }
         };
 
         reader.onerror = () => resolve(null);
-        // Read only the first 128 KB — EXIF is always near the start of the file
         reader.readAsArrayBuffer(file.slice(0, 131072));
     });
 }
@@ -160,12 +213,34 @@ function getBrowserLocation() {
 }
 
 
-// ── Upload form: attach geo data before submit ────────────────────────────────
+// ── Page init ─────────────────────────────────────────────────────────────────
 
 $(function () {
 
-    // When the user picks a file, immediately try to extract EXIF GPS.
-    // We store the result so we don't re-read the file on submit.
+    // Restore pills if form was re-rendered after a validation error
+    initTagsFromHidden();
+
+    // Click on the pill box focuses the text input
+    $("#tagPillBox").on("click", function () {
+        $("#tagTextInput").focus();
+    });
+
+    // Add tag on Enter or comma
+    $("#tagTextInput").on("keydown", function (e) {
+        if (e.key === "Enter") {
+            e.preventDefault();  // don't submit the form
+            addTagFromInput();
+        }
+    });
+
+    $("#tagTextInput").on("input", function () {
+        // Add tag when user types a comma
+        if (this.value.includes(",")) {
+            addTagFromInput();
+        }
+    });
+
+    // EXIF: read GPS as soon as a file is chosen
     let exifCoords = null;
 
     $("#imageInput").on("change", async function () {
@@ -181,23 +256,32 @@ $(function () {
         }
     });
 
-    // On submit: populate hidden fields, then let the form post normally.
+    // Submit: validate tags, populate geo fields, then post
     $("#uploadForm").on("submit", async function (e) {
         e.preventDefault();
+
+        // Flush any half-typed tag in the input box
+        addTagFromInput();
+
+        if (tags.length === 0) {
+            // Show inline error without a page reload
+            if (!$("#tagError").length) {
+                $("<p id='tagError' style='color:#C06E52; font-weight:700;'>Please add at least one tag.</p>")
+                    .insertAfter("#tagPillBox");
+            }
+            return;
+        }
+        $("#tagError").remove();
 
         const statusEl = $("#geoStatus");
 
         if (exifCoords) {
-            // Use coordinates already read from EXIF
             $("#latitude").val(exifCoords.latitude);
             $("#longitude").val(exifCoords.longitude);
             $("#geo_source").val("exif");
-
         } else {
-            // Fall back to browser geolocation
             statusEl.text("Requesting device location…");
             const browserCoords = await getBrowserLocation();
-
             if (browserCoords) {
                 $("#latitude").val(browserCoords.latitude);
                 $("#longitude").val(browserCoords.longitude);
@@ -206,17 +290,14 @@ $(function () {
                     `📍 Using device location (${browserCoords.latitude}, ${browserCoords.longitude})`
                 );
             } else {
-                // Neither source worked — submit without coordinates
                 statusEl.text("Location unavailable — uploading without coordinates.");
             }
         }
 
-        // Sanitize the manual location label before submission
+        // Sanitize manual location label
         const labelInput = $("#location_label");
-        const sanitized  = sanitizeInput(labelInput.val());
-        labelInput.val(sanitized);
+        labelInput.val(sanitizeInput(labelInput.val()));
 
-        // Submit the form
         this.submit();
     });
 
@@ -240,10 +321,7 @@ async function searchByTag(tag) {
     status.text("");
     grid.empty();
 
-    if (!tag) {
-        status.text("Enter a tag to search.");
-        return;
-    }
+    if (!tag) { status.text("Enter a tag to search."); return; }
 
     const sanitized = sanitizeInput(tag).toLowerCase();
 
@@ -256,7 +334,6 @@ async function searchByTag(tag) {
 
     try {
         const response = await fetch(`/gallery/search?tag=${encodeURIComponent(sanitized)}`);
-
         if (!response.ok) { status.text("Search failed."); return; }
 
         const data = await response.json();

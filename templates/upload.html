@@ -5,6 +5,68 @@
 		<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 		<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 		<script defer src="{{ url_for('static', filename='frontend.js') }}"></script>
+		<style>
+			/* Tag pill container */
+			.tag-input-wrapper {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.5rem;
+				align-items: center;
+				padding: 0.6rem;
+				border: 2px solid var(--primary);
+				border-radius: var(--radius-md);
+				background: white;
+				margin-bottom: 1.2rem;
+				cursor: text;
+			}
+			.tag-input-wrapper:focus-within {
+				border-color: var(--secondary_dark);
+				box-shadow: 0 0 0 4px rgba(125,122,188,0.25);
+			}
+			.tag-pill {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.3rem;
+				background: var(--primary);
+				color: white;
+				padding: 0.25rem 0.65rem;
+				border-radius: 999px;
+				font-size: 0.9rem;
+				font-weight: 700;
+			}
+			.tag-pill button {
+				background: none;
+				border: none;
+				color: white;
+				cursor: pointer;
+				font-size: 1rem;
+				line-height: 1;
+				padding: 0;
+				width: auto;
+				box-shadow: none;
+				font-weight: 900;
+			}
+			.tag-pill button:hover {
+				transform: none;
+				box-shadow: none;
+				color: var(--light);
+			}
+			#tagTextInput {
+				border: none;
+				outline: none;
+				font-size: 1rem;
+				flex: 1;
+				min-width: 120px;
+				padding: 0.2rem;
+				margin-bottom: 0;
+			}
+			.tag-hint {
+				font-size: 0.85rem;
+				color: #7D7ABC;
+				margin-top: -1rem;
+				margin-bottom: 1.2rem;
+			}
+		</style>
 	</head>
 	<body>
 		<h1>Forager's Assistant</h1>
@@ -18,10 +80,18 @@
 				<label>Submission:</label>
 				<input type="file" name="image" id="imageInput" accept="image/*" required>
 			</p>
-			<p>
-				<label>Species Tag:</label>
-				<input type="text" name="tag" value="{{ previous_tag or '' }}" required>
-			</p>
+
+			<label>Species Tags:</label>
+			<div class="tag-input-wrapper" id="tagPillBox">
+				<!-- Pills injected here by JS -->
+				<input type="text" id="tagTextInput" placeholder="Type a tag and press Enter or comma…">
+			</div>
+			<p class="tag-hint">Add up to 10 tags. Letters only. Press Enter or comma to add each one.</p>
+
+			<!-- Hidden field carrying the comma-separated tag list to the server -->
+			<input type="hidden" name="tags" id="tagsHidden"
+			       value="{{ previous_tags or '' }}">
+
 			<p>
 				<label>
 					Location

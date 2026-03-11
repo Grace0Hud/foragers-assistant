@@ -65,6 +65,31 @@ def sanitize_tag(value: str) -> str:
     return v
 
 
+def sanitize_tags(raw: str) -> list:
+    """
+    Parse and sanitize a comma-separated tag string submitted from the form.
+    - Splits on commas
+    - Sanitizes each individual tag via sanitize_tag()
+    - Deduplicates while preserving order
+    - Enforces a maximum of 10 tags
+    - Requires at least 1 tag
+    Returns a list of clean lowercase tag strings.
+    """
+    if not isinstance(raw, str):
+        raise ValueError("Tags must be a string")
+    parts = [p.strip().lower() for p in raw.split(",") if p.strip()]
+    if len(parts) == 0:
+        raise ValueError("Please add at least one tag")
+    if len(parts) > 10:
+        raise ValueError("A maximum of 10 tags is allowed")
+    seen = []
+    for part in parts:
+        cleaned = sanitize_tag(part)
+        if cleaned not in seen:
+            seen.append(cleaned)
+    return seen
+
+
 def sanitize_username(value: str) -> str:
     USERNAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
     if not isinstance(value, str):
@@ -88,32 +113,18 @@ def sanitize_password(value: str) -> str:
 
 
 def sanitize_location_label(value: str) -> str:
-    """
-    Sanitize a free-text location label.
-    - Must be a string
-    - 0–200 characters (optional field — empty string is allowed)
-    - Strips HTML/scripts via bleach
-    - Blocks NoSQL injection characters: $ at the start of words, and bare dots
-      that could be interpreted as field path traversal
-    """
     if not isinstance(value, str):
         raise ValueError("Location must be a string")
     v = value.strip()
     if len(v) > 200:
         raise ValueError("Location label must be 200 characters or fewer")
-    # Block any token that starts with $ (MongoDB operator injection)
     if re.search(r'(^|\s)\$', v):
         raise ValueError("Location contains invalid characters")
-    # Strip HTML and scripts
     v = bleach.clean(v, tags=[], strip=True)
     return v
 
 
 def sanitize_coordinate(value: str, low: float, high: float) -> float:
-    """
-    Parse and range-check a coordinate string coming from a hidden form field.
-    Returns the float value, or raises ValueError.
-    """
     try:
         f = float(value)
     except (TypeError, ValueError):
@@ -123,12 +134,10 @@ def sanitize_coordinate(value: str, low: float, high: float) -> float:
     return round(f, 7)
 
 
-# ── EXIF GPS extraction (server-side fallback / verification) ─────────────────
+# ── EXIF GPS extraction ───────────────────────────────────────────────────────
 
 def _dms_to_decimal(dms_values, ref: str) -> float:
-    """Convert a (degrees, minutes, seconds) EXIF tuple to a signed decimal."""
     def to_float(v):
-        # Pillow may return an IFDRational or a plain tuple (num, denom)
         try:
             return float(v)
         except TypeError:
@@ -144,32 +153,22 @@ def _dms_to_decimal(dms_values, ref: str) -> float:
 
 
 def extract_exif_gps(filepath: str):
-    """
-    Open an image with Pillow and attempt to extract GPS coordinates from EXIF.
-    Returns a dict {"latitude": float, "longitude": float, "source": "exif"}
-    or None if GPS data is absent or the file is not a JPEG/TIFF.
-    """
     try:
         img = Image.open(filepath)
         exif_data = img._getexif()
         if exif_data is None:
             return None
 
-        # Find the GPSInfo block
         gps_info = None
         for tag_id, val in exif_data.items():
-            tag_name = TAGS.get(tag_id, tag_id)
-            if tag_name == "GPSInfo":
+            if TAGS.get(tag_id, tag_id) == "GPSInfo":
                 gps_info = val
                 break
 
         if not gps_info:
             return None
 
-        # Decode the GPS sub-tags
-        gps = {}
-        for key, val in gps_info.items():
-            gps[GPSTAGS.get(key, key)] = val
+        gps = {GPSTAGS.get(k, k): v for k, v in gps_info.items()}
 
         if "GPSLatitude" not in gps or "GPSLongitude" not in gps:
             return None
@@ -206,7 +205,8 @@ def api_search():
     except ValueError:
         return jsonify({"error": "Invalid tag"}), 400
 
-    images = photo_collection.find({"tag": tag}, {"image": 1, "_id": 0})
+    # Search within the tags array field
+    images = photo_collection.find({"tags": tag}, {"image": 1, "_id": 0})
     filenames = [doc["image"] for doc in images]
     return jsonify({"tag": tag, "images": filenames})
 
@@ -299,39 +299,37 @@ def upload_image():
 
     file = request.files["image"]
 
-    # ── Validate tag ──────────────────────────────────────────────────────────
+    # ── Validate tags ─────────────────────────────────────────────────────────
     try:
-        tag = sanitize_tag(request.form.get("tag", ""))
+        tag_list = sanitize_tags(request.form.get("tags", ""))
     except ValueError as e:
         return render_template("upload.html", error=str(e),
-                               previous_tag=request.form.get("tag", ""),
+                               previous_tags=request.form.get("tags", ""),
                                previous_location=request.form.get("location_label", ""),
                                username=session["username"])
 
-    # ── Validate manual location label ────────────────────────────────────────
+    # ── Validate location label ───────────────────────────────────────────────
     try:
         location_label = sanitize_location_label(request.form.get("location_label", ""))
     except ValueError as e:
         return render_template("upload.html", error=str(e),
-                               previous_tag=tag,
+                               previous_tags=request.form.get("tags", ""),
                                previous_location=request.form.get("location_label", ""),
                                username=session["username"])
 
     if file.filename == "":
         return "No selected file", 400
 
-    # ── Save the file ─────────────────────────────────────────────────────────
+    # ── Save file ─────────────────────────────────────────────────────────────
     filename = secure_filename(file.filename)
     filename = f"{uuid.uuid4().hex}_{filename}"
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(filepath)
 
     # ── Resolve coordinates ───────────────────────────────────────────────────
-    # Priority: EXIF from the saved file → browser geolocation from hidden fields
     location_data = extract_exif_gps(filepath)
 
     if location_data is None:
-        # Try the coordinates submitted by the browser via hidden fields
         raw_lat = request.form.get("latitude", "").strip()
         raw_lon = request.form.get("longitude", "").strip()
         raw_src = request.form.get("geo_source", "").strip()
@@ -340,25 +338,23 @@ def upload_image():
             try:
                 lat = sanitize_coordinate(raw_lat, -90.0,  90.0)
                 lon = sanitize_coordinate(raw_lon, -180.0, 180.0)
-                # Only accept "browser" as a valid source label
                 source = "browser" if raw_src == "browser" else "unknown"
                 location_data = {"latitude": lat, "longitude": lon, "source": source}
             except ValueError:
-                # Coordinates were malformed — store without them
                 location_data = None
 
     # ── Build and insert document ─────────────────────────────────────────────
     data = {
         "image":          filename,
-        "tag":            tag.lower(),
-        "location_label": location_label,                    # free-text description (may be "")
-        "location_geo":   location_data,                     # {"latitude", "longitude", "source"} or None
+        "tags":           tag_list,              # list of tag strings e.g. ["mushroom", "edible"]
+        "location_label": location_label,
+        "location_geo":   location_data,
         "uploaded_by":    session["username"],
-        "uploaded_at":    datetime.now(timezone.utc)         # UTC timestamp
+        "uploaded_at":    datetime.now(timezone.utc)
     }
 
     result = photo_collection.insert_one(data)
-    print(f"Image uploaded. ID: {result.inserted_id} | geo: {location_data}")
+    print(f"Image uploaded. ID: {result.inserted_id} | tags: {tag_list} | geo: {location_data}")
 
     return redirect(url_for("start_index"))
 
@@ -367,11 +363,8 @@ if __name__ == "__main__":
     env = os.getenv("FLASK_ENV", "development")
 
     if env == "production":
-        # On AWS, Nginx terminates HTTPS and proxies to Flask over plain HTTP
         app.run(host="0.0.0.0", port=5050)
     elif SSL_CERT and SSL_KEY:
-        # Local development: Flask serves HTTPS directly with a self-signed cert
         app.run(host="0.0.0.0", port=5050, ssl_context=(SSL_CERT, SSL_KEY))
     else:
-        # Local fallback: plain HTTP (geolocation won't work outside localhost)
         app.run(host="0.0.0.0", port=5050)
