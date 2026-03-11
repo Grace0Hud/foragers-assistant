@@ -1,6 +1,5 @@
 // ── Sanitization helpers ──────────────────────────────────────────────────────
 
-// Strip HTML tags and trim whitespace from any string input.
 function sanitizeInput(value) {
     if (typeof value !== "string") return "";
     const temp = document.createElement("div");
@@ -8,99 +7,221 @@ function sanitizeInput(value) {
     return temp.innerHTML.trim();
 }
 
-// Validate a single tag: letters only, 1–128 chars.
 function validateTag(tag) {
     if (!tag || tag.length === 0 || tag.length > 128) return false;
     return /^[A-Za-z]+$/.test(tag);
 }
 
-// Validate a coordinate value is a finite number within range.
-function validateCoordinate(lat, lon) {
-    const la = parseFloat(lat);
-    const lo = parseFloat(lon);
-    return (
-        isFinite(la) && isFinite(lo) &&
-        la >= -90  && la <= 90 &&
-        lo >= -180 && lo <= 180
-    );
-}
 
+// ── Upload form: tag pill management ─────────────────────────────────────────
 
-// ── Tag pill management ───────────────────────────────────────────────────────
+const MAX_UPLOAD_TAGS = 10;
+let uploadTags = [];
 
-const MAX_TAGS = 10;
-let tags = [];  // current list of validated tags
-
-// Re-render all pills in the pill box and sync the hidden input.
-function renderTags() {
+function renderUploadTags() {
     const box   = document.getElementById("tagPillBox");
     const input = document.getElementById("tagTextInput");
+    if (!box) return;
 
-    // Remove all existing pills (keep the text input)
     box.querySelectorAll(".tag-pill").forEach(el => el.remove());
 
-    tags.forEach((tag, index) => {
+    uploadTags.forEach((tag, index) => {
         const pill = document.createElement("span");
         pill.className = "tag-pill";
         pill.innerHTML = `${tag} <button type="button" aria-label="Remove ${tag}">&times;</button>`;
         pill.querySelector("button").addEventListener("click", () => {
-            tags.splice(index, 1);
-            renderTags();
+            uploadTags.splice(index, 1);
+            renderUploadTags();
         });
         box.insertBefore(pill, input);
     });
 
-    // Sync hidden field
-    document.getElementById("tagsHidden").value = tags.join(",");
-
-    // Hide text input if at limit
-    input.style.display = tags.length >= MAX_TAGS ? "none" : "";
-    input.placeholder = tags.length === 0
+    document.getElementById("tagsHidden").value = uploadTags.join(",");
+    input.style.display = uploadTags.length >= MAX_UPLOAD_TAGS ? "none" : "";
+    input.placeholder = uploadTags.length === 0
         ? "Type a tag and press Enter or comma…"
         : "Add another tag…";
 }
 
-// Attempt to add a tag from the current text input value.
-function addTagFromInput() {
-    const input    = document.getElementById("tagTextInput");
-    const raw      = sanitizeInput(input.value).toLowerCase().replace(/,/g, "").trim();
-
+function addUploadTagFromInput() {
+    const input = document.getElementById("tagTextInput");
+    if (!input) return;
+    const raw = sanitizeInput(input.value).toLowerCase().replace(/,/g, "").trim();
     if (!raw) return;
-
     if (!validateTag(raw)) {
-        // Flash the border red briefly to signal invalid input
         input.style.borderBottom = "2px solid #C06E52";
         setTimeout(() => input.style.borderBottom = "", 1000);
         input.value = "";
         return;
     }
-
-    if (tags.includes(raw)) {
+    if (uploadTags.includes(raw) || uploadTags.length >= MAX_UPLOAD_TAGS) {
         input.value = "";
         return;
     }
-
-    if (tags.length >= MAX_TAGS) {
-        input.value = "";
-        return;
-    }
-
-    tags.push(raw);
+    uploadTags.push(raw);
     input.value = "";
-    renderTags();
+    renderUploadTags();
 }
 
-// Pre-populate pills if the form is re-rendered with previous_tags (on error).
-function initTagsFromHidden() {
+function initUploadTagsFromHidden() {
     const hidden = document.getElementById("tagsHidden");
     if (!hidden || !hidden.value) return;
     hidden.value.split(",").forEach(t => {
         const clean = t.trim().toLowerCase();
-        if (clean && validateTag(clean) && !tags.includes(clean)) {
-            tags.push(clean);
+        if (clean && validateTag(clean) && !uploadTags.includes(clean)) {
+            uploadTags.push(clean);
         }
     });
-    renderTags();
+    renderUploadTags();
+}
+
+
+// ── Gallery: active search tags ───────────────────────────────────────────────
+
+let activeTags = [];   // tags currently filtering the gallery
+
+function renderActiveTags() {
+    const container = $("#activeTags");
+    container.empty();
+    activeTags.forEach(tag => {
+        const pill = $(`<span class="search-tag-pill">${tag} <button type="button" aria-label="Remove ${tag}">&times;</button></span>`);
+        pill.find("button").on("click", () => {
+            activeTags = activeTags.filter(t => t !== tag);
+            renderActiveTags();
+            if (activeTags.length > 0) runSearch();
+            else {
+                $("#resultsGrid").empty();
+                $("#searchStatus").text("");
+            }
+        });
+        container.append(pill);
+    });
+}
+
+// Add a tag to the active search filter and re-run the search.
+function addSearchTag(tag) {
+    const clean = sanitizeInput(tag).toLowerCase();
+    if (!validateTag(clean)) return;
+    if (activeTags.includes(clean)) return;
+    activeTags.push(clean);
+    renderActiveTags();
+    runSearch();
+}
+
+
+// ── Gallery: search & render ──────────────────────────────────────────────────
+
+async function runSearch() {
+    const status = $("#searchStatus");
+    const grid   = $("#resultsGrid");
+
+    status.text("Searching…");
+    grid.empty();
+
+    try {
+        // Pass all active tags as repeated ?tags= params
+        const params = activeTags.map(t => `tags=${encodeURIComponent(t)}`).join("&");
+        const response = await fetch(`/gallery/search?${params}`);
+
+        if (!response.ok) { status.text("Search failed."); return; }
+
+        const data = await response.json();
+
+        if (!data.images || data.images.length === 0) {
+            status.text(`No images found for "${activeTags.join(" + ")}".`);
+            return;
+        }
+
+        status.text(`Found ${data.images.length} image(s) for "${activeTags.join(" + ")}".`);
+
+        data.images.forEach(item => {
+            // Build tag strip preview (first 3 tags)
+            const tagPills = (item.tags || []).slice(0, 3)
+                .map(t => `<span class="card-tag">${t}</span>`).join("");
+
+            const card = $(`
+                <div class="grid-card" tabindex="0" role="button" aria-label="View details">
+                    <img src="/uploads/${encodeURIComponent(item.image)}"
+                         alt="Tagged ${(item.tags || []).join(', ')}">
+                    <div class="card-tag-strip">${tagPills}</div>
+                </div>
+            `);
+
+            card.on("click keydown", function (e) {
+                if (e.type === "keydown" && e.key !== "Enter") return;
+                openDetail(item);
+            });
+
+            grid.append(card);
+        });
+
+    } catch (err) {
+        console.error(err);
+        status.text("Network error occurred.");
+    }
+}
+
+
+// ── Detail modal ──────────────────────────────────────────────────────────────
+
+function openDetail(item) {
+    const activeTagSet = new Set(activeTags);
+
+    // Image
+    $("#detailImg")
+        .attr("src", `/uploads/${encodeURIComponent(item.image)}`)
+        .attr("alt", (item.tags || []).join(", "));
+
+    // Tags — clickable pills, highlighted if already in active search
+    const tagsEl = $("#detailTags").empty();
+    (item.tags || []).forEach(tag => {
+        const pill = $(`<span class="detail-tag-pill${activeTagSet.has(tag) ? " active-tag" : ""}">${tag}</span>`);
+        pill.on("click", () => {
+            addSearchTag(tag);
+            // Update highlight state without closing modal
+            pill.addClass("active-tag");
+        });
+        tagsEl.append(pill);
+    });
+
+    // Location label (free-text, optional)
+    if (item.location_label) {
+        $("#detailLocationLabel").text(item.location_label);
+        $("#detailLocationLabelRow").show();
+    } else {
+        $("#detailLocationLabelRow").hide();
+    }
+
+    // Coordinates with Google Maps directions link
+    const geo = item.location_geo;
+    if (geo && geo.latitude != null && geo.longitude != null) {
+        const lat = geo.latitude;
+        const lon = geo.longitude;
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+        $("#detailCoordsLink").attr("href", mapsUrl);
+        $("#detailCoordsText").text(`${lat}, ${lon}`);
+        $("#detailCoordsRow").show();
+    } else {
+        $("#detailCoordsRow").hide();
+    }
+
+    // Uploader and timestamp
+    $("#detailUploadedBy").text(item.uploaded_by || "Unknown");
+
+    if (item.uploaded_at) {
+        const d = new Date(item.uploaded_at);
+        $("#detailUploadedAt").text(d.toLocaleString());
+    } else {
+        $("#detailUploadedAt").text("Unknown");
+    }
+
+    $("#detailOverlay").addClass("open");
+    document.body.style.overflow = "hidden";
+}
+
+function closeDetail() {
+    $("#detailOverlay").removeClass("open");
+    document.body.style.overflow = "";
 }
 
 
@@ -109,87 +230,61 @@ function initTagsFromHidden() {
 function extractExifGps(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
-
         reader.onload = function (e) {
             try {
                 const buf  = e.target.result;
                 const view = new DataView(buf);
-
                 if (view.getUint16(0) !== 0xFFD8) { resolve(null); return; }
-
                 let offset = 2;
                 while (offset < view.byteLength - 2) {
                     const marker = view.getUint16(offset);
                     offset += 2;
-
                     if (marker === 0xFFE1) {
                         const exifStr = String.fromCharCode(
                             view.getUint8(offset + 2), view.getUint8(offset + 3),
                             view.getUint8(offset + 4), view.getUint8(offset + 5)
                         );
                         if (exifStr !== "Exif") { resolve(null); return; }
-
                         const tiffStart = offset + 8;
-                        const endian    = view.getUint16(tiffStart);
-                        const littleEnd = (endian === 0x4949);
-
-                        const getUint16 = (o) => view.getUint16(tiffStart + o, littleEnd);
-                        const getUint32 = (o) => view.getUint32(tiffStart + o, littleEnd);
-
+                        const littleEnd = view.getUint16(tiffStart) === 0x4949;
+                        const getUint16 = o => view.getUint16(tiffStart + o, littleEnd);
+                        const getUint32 = o => view.getUint32(tiffStart + o, littleEnd);
                         const ifd0Offset = getUint32(4);
                         const ifd0Count  = getUint16(ifd0Offset);
-                        let   gpsIfdOffset = null;
-
+                        let gpsIfdOffset = null;
                         for (let i = 0; i < ifd0Count; i++) {
-                            const entryOffset = ifd0Offset + 2 + i * 12;
-                            if (getUint16(entryOffset) === 0x8825) {
-                                gpsIfdOffset = getUint32(entryOffset + 8);
-                                break;
-                            }
+                            const eo = ifd0Offset + 2 + i * 12;
+                            if (getUint16(eo) === 0x8825) { gpsIfdOffset = getUint32(eo + 8); break; }
                         }
-
                         if (gpsIfdOffset === null) { resolve(null); return; }
-
                         const gpsCount = getUint16(gpsIfdOffset);
                         const gps = {};
-
                         for (let i = 0; i < gpsCount; i++) {
-                            const entryOffset = gpsIfdOffset + 2 + i * 12;
-                            const tag    = getUint16(entryOffset);
-                            const valOff = entryOffset + 8;
-
-                            if (tag === 1 || tag === 3) {
-                                gps[tag] = String.fromCharCode(view.getUint8(tiffStart + getUint32(valOff)));
-                            }
+                            const eo  = gpsIfdOffset + 2 + i * 12;
+                            const tag = getUint16(eo);
+                            const vo  = eo + 8;
+                            if (tag === 1 || tag === 3)
+                                gps[tag] = String.fromCharCode(view.getUint8(tiffStart + getUint32(vo)));
                             if (tag === 2 || tag === 4) {
-                                const dataOffset = getUint32(valOff);
-                                const deg = getUint32(dataOffset)      / getUint32(dataOffset + 4);
-                                const min = getUint32(dataOffset + 8)  / getUint32(dataOffset + 12);
-                                const sec = getUint32(dataOffset + 16) / getUint32(dataOffset + 20);
-                                gps[tag] = deg + min / 60 + sec / 3600;
+                                const d = getUint32(vo);
+                                gps[tag] = getUint32(d)/getUint32(d+4) + getUint32(d+8)/getUint32(d+12)/60 + getUint32(d+16)/getUint32(d+20)/3600;
                             }
                         }
-
                         if (gps[2] !== undefined && gps[4] !== undefined) {
-                            let lat = gps[2];
-                            let lon = gps[4];
+                            let lat = gps[2], lon = gps[4];
                             if (gps[1] === "S") lat = -lat;
                             if (gps[3] === "W") lon = -lon;
                             resolve({ latitude: lat.toFixed(7), longitude: lon.toFixed(7) });
                             return;
                         }
-
-                        resolve(null);
-                        return;
+                        resolve(null); return;
                     }
-
                     if ((marker & 0xFF00) !== 0xFF00) { resolve(null); return; }
                     offset += view.getUint16(offset);
                 }
                 resolve(null);
             } catch (_) { resolve(null); }
         };
-
         reader.onerror = () => resolve(null);
         reader.readAsArrayBuffer(file.slice(0, 131072));
     });
@@ -202,11 +297,8 @@ function getBrowserLocation() {
     return new Promise((resolve) => {
         if (!navigator.geolocation) { resolve(null); return; }
         navigator.geolocation.getCurrentPosition(
-            (pos) => resolve({
-                latitude:  pos.coords.latitude.toFixed(7),
-                longitude: pos.coords.longitude.toFixed(7)
-            }),
-            () => resolve(null),
+            pos => resolve({ latitude: pos.coords.latitude.toFixed(7), longitude: pos.coords.longitude.toFixed(7) }),
+            ()  => resolve(null),
             { timeout: 8000 }
         );
     });
@@ -217,142 +309,100 @@ function getBrowserLocation() {
 
 $(function () {
 
-    // Restore pills if form was re-rendered after a validation error
-    initTagsFromHidden();
+    // ── Upload page ───────────────────────────────────────────────────────────
+    if (document.getElementById("tagPillBox")) {
+        initUploadTagsFromHidden();
 
-    // Click on the pill box focuses the text input
-    $("#tagPillBox").on("click", function () {
-        $("#tagTextInput").focus();
-    });
+        $("#tagPillBox").on("click", () => $("#tagTextInput").focus());
 
-    // Add tag on Enter or comma
-    $("#tagTextInput").on("keydown", function (e) {
-        if (e.key === "Enter") {
-            e.preventDefault();  // don't submit the form
-            addTagFromInput();
-        }
-    });
+        $("#tagTextInput").on("keydown", function (e) {
+            if (e.key === "Enter") { e.preventDefault(); addUploadTagFromInput(); }
+        }).on("input", function () {
+            if (this.value.includes(",")) addUploadTagFromInput();
+        });
 
-    $("#tagTextInput").on("input", function () {
-        // Add tag when user types a comma
-        if (this.value.includes(",")) {
-            addTagFromInput();
-        }
-    });
+        let exifCoords = null;
 
-    // EXIF: read GPS as soon as a file is chosen
-    let exifCoords = null;
-
-    $("#imageInput").on("change", async function () {
-        const file = this.files[0];
-        if (!file) return;
-        exifCoords = await extractExifGps(file);
-        if (exifCoords) {
-            $("#geoStatus").text(
-                `📍 GPS found in photo (${exifCoords.latitude}, ${exifCoords.longitude})`
+        $("#imageInput").on("change", async function () {
+            const file = this.files[0];
+            if (!file) return;
+            exifCoords = await extractExifGps(file);
+            $("#geoStatus").text(exifCoords
+                ? `📍 GPS found in photo (${exifCoords.latitude}, ${exifCoords.longitude})`
+                : "No GPS data in photo — will try device location on upload."
             );
-        } else {
-            $("#geoStatus").text("No GPS data in photo — will try device location on upload.");
-        }
-    });
+        });
 
-    // Submit: validate tags, populate geo fields, then post
-    $("#uploadForm").on("submit", async function (e) {
-        e.preventDefault();
+        $("#uploadForm").on("submit", async function (e) {
+            e.preventDefault();
+            addUploadTagFromInput();
 
-        // Flush any half-typed tag in the input box
-        addTagFromInput();
-
-        if (tags.length === 0) {
-            // Show inline error without a page reload
-            if (!$("#tagError").length) {
-                $("<p id='tagError' style='color:#C06E52; font-weight:700;'>Please add at least one tag.</p>")
-                    .insertAfter("#tagPillBox");
+            if (uploadTags.length === 0) {
+                if (!$("#tagError").length)
+                    $("<p id='tagError' style='color:#C06E52;font-weight:700;'>Please add at least one tag.</p>")
+                        .insertAfter("#tagPillBox");
+                return;
             }
-            return;
-        }
-        $("#tagError").remove();
+            $("#tagError").remove();
 
-        const statusEl = $("#geoStatus");
-
-        if (exifCoords) {
-            $("#latitude").val(exifCoords.latitude);
-            $("#longitude").val(exifCoords.longitude);
-            $("#geo_source").val("exif");
-        } else {
-            statusEl.text("Requesting device location…");
-            const browserCoords = await getBrowserLocation();
-            if (browserCoords) {
-                $("#latitude").val(browserCoords.latitude);
-                $("#longitude").val(browserCoords.longitude);
-                $("#geo_source").val("browser");
-                statusEl.text(
-                    `📍 Using device location (${browserCoords.latitude}, ${browserCoords.longitude})`
-                );
+            const statusEl = $("#geoStatus");
+            if (exifCoords) {
+                $("#latitude").val(exifCoords.latitude);
+                $("#longitude").val(exifCoords.longitude);
+                $("#geo_source").val("exif");
             } else {
-                statusEl.text("Location unavailable — uploading without coordinates.");
+                statusEl.text("Requesting device location…");
+                const bc = await getBrowserLocation();
+                if (bc) {
+                    $("#latitude").val(bc.latitude);
+                    $("#longitude").val(bc.longitude);
+                    $("#geo_source").val("browser");
+                    statusEl.text(`📍 Using device location (${bc.latitude}, ${bc.longitude})`);
+                } else {
+                    statusEl.text("Location unavailable — uploading without coordinates.");
+                }
             }
-        }
 
-        // Sanitize manual location label
-        const labelInput = $("#location_label");
-        labelInput.val(sanitizeInput(labelInput.val()));
+            const labelInput = $("#location_label");
+            labelInput.val(sanitizeInput(labelInput.val()));
+            this.submit();
+        });
+    }
 
-        this.submit();
-    });
+    // ── Gallery page ──────────────────────────────────────────────────────────
+    if (document.getElementById("searchForm")) {
 
+        // Add tag from text input on Enter or comma
+        $("#tag_input").on("keydown", function (e) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                const val = $(this).val().trim();
+                if (val) { addSearchTag(val); $(this).val(""); }
+            }
+        }).on("input", function () {
+            if (this.value.includes(",")) {
+                addSearchTag(this.value);
+                $(this).val("");
+            }
+        });
 
-    // ── Gallery search ────────────────────────────────────────────────────────
+        // Search button / form submit
+        $("#searchForm").on("submit", function (e) {
+            e.preventDefault();
+            const val = $("#tag_input").val().trim();
+            if (val) { addSearchTag(val); $("#tag_input").val(""); }
+            else if (activeTags.length > 0) runSearch();
+        });
 
-    $("#searchForm").on("submit", function (e) {
-        e.preventDefault();
-        const tag = $("#tag_input").val().trim();
-        searchByTag(tag);
-    });
+        // Detail modal: close on overlay click or close button
+        $("#detailOverlay").on("click", function (e) {
+            if (e.target === this) closeDetail();
+        });
+        $("#detailClose").on("click", closeDetail);
+
+        // Close modal on Escape key
+        $(document).on("keydown", function (e) {
+            if (e.key === "Escape") closeDetail();
+        });
+    }
 });
-
-
-// ── Gallery search function ───────────────────────────────────────────────────
-
-async function searchByTag(tag) {
-    const status = $("#searchStatus");
-    const grid   = $("#resultsGrid");
-
-    status.text("");
-    grid.empty();
-
-    if (!tag) { status.text("Enter a tag to search."); return; }
-
-    const sanitized = sanitizeInput(tag).toLowerCase();
-
-    if (!validateTag(sanitized)) {
-        status.text("Invalid tag. Tags must contain only letters (A–Z) and be 1–128 characters long.");
-        return;
-    }
-
-    status.text("Searching...");
-
-    try {
-        const response = await fetch(`/gallery/search?tag=${encodeURIComponent(sanitized)}`);
-        if (!response.ok) { status.text("Search failed."); return; }
-
-        const data = await response.json();
-
-        if (!data.images || data.images.length === 0) {
-            status.text(`No images found for "${sanitized}".`);
-            return;
-        }
-
-        status.text(`Found ${data.images.length} image(s) for "${sanitized}".`);
-
-        const html = data.images.map(filename =>
-            `<img src="/uploads/${encodeURIComponent(filename)}" alt="Tagged ${sanitized}">`
-        ).join("");
-
-        grid.html(html);
-
-    } catch (error) {
-        console.error(error);
-        status.text("Network error occurred.");
-    }
-}

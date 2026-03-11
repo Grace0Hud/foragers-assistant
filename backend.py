@@ -68,12 +68,7 @@ def sanitize_tag(value: str) -> str:
 def sanitize_tags(raw: str) -> list:
     """
     Parse and sanitize a comma-separated tag string submitted from the form.
-    - Splits on commas
-    - Sanitizes each individual tag via sanitize_tag()
-    - Deduplicates while preserving order
-    - Enforces a maximum of 10 tags
-    - Requires at least 1 tag
-    Returns a list of clean lowercase tag strings.
+    Returns a deduplicated list of clean lowercase tag strings (1–10 items).
     """
     if not isinstance(raw, str):
         raise ValueError("Tags must be a string")
@@ -142,7 +137,6 @@ def _dms_to_decimal(dms_values, ref: str) -> float:
             return float(v)
         except TypeError:
             return v[0] / v[1]
-
     deg = to_float(dms_values[0])
     mn  = to_float(dms_values[1])
     sec = to_float(dms_values[2])
@@ -158,26 +152,19 @@ def extract_exif_gps(filepath: str):
         exif_data = img._getexif()
         if exif_data is None:
             return None
-
         gps_info = None
         for tag_id, val in exif_data.items():
             if TAGS.get(tag_id, tag_id) == "GPSInfo":
                 gps_info = val
                 break
-
         if not gps_info:
             return None
-
         gps = {GPSTAGS.get(k, k): v for k, v in gps_info.items()}
-
         if "GPSLatitude" not in gps or "GPSLongitude" not in gps:
             return None
-
         lat = _dms_to_decimal(gps["GPSLatitude"],  gps.get("GPSLatitudeRef",  "N"))
         lon = _dms_to_decimal(gps["GPSLongitude"], gps.get("GPSLongitudeRef", "E"))
-
         return {"latitude": lat, "longitude": lon, "source": "exif"}
-
     except Exception:
         return None
 
@@ -199,16 +186,42 @@ def get_gallery():
 @app.route("/gallery/search")
 @login_required
 def api_search():
-    raw_tag = request.args.get("tag", "")
-    try:
-        tag = sanitize_tag(raw_tag.lower())
-    except ValueError:
-        return jsonify({"error": "Invalid tag"}), 400
+    # Accept one or more ?tags= parameters for AND filtering
+    raw_tags = request.args.getlist("tags")
 
-    # Search within the tags array field
-    images = photo_collection.find({"tags": tag}, {"image": 1, "_id": 0})
-    filenames = [doc["image"] for doc in images]
-    return jsonify({"tag": tag, "images": filenames})
+    if not raw_tags:
+        return jsonify({"error": "At least one tag is required"}), 400
+
+    # Sanitize every tag
+    clean_tags = []
+    for raw in raw_tags:
+        try:
+            clean_tags.append(sanitize_tag(raw.lower()))
+        except ValueError:
+            return jsonify({"error": f"Invalid tag: {raw}"}), 400
+
+    # Build an $all query: document's tags array must contain every searched tag
+    query = {"tags": {"$all": clean_tags}}
+
+    # Return full metadata needed by the detail panel (exclude internal _id)
+    projection = {
+        "_id":            0,
+        "image":          1,
+        "tags":           1,
+        "location_label": 1,
+        "location_geo":   1,
+        "uploaded_by":    1,
+        "uploaded_at":    1,
+    }
+
+    docs = list(photo_collection.find(query, projection))
+
+    # Convert datetime to ISO string so JSON serialization works
+    for doc in docs:
+        if doc.get("uploaded_at"):
+            doc["uploaded_at"] = doc["uploaded_at"].isoformat()
+
+    return jsonify({"tags": clean_tags, "images": docs})
 
 
 @app.route("/uploads/<filename>")
@@ -230,14 +243,12 @@ def user_login():
         username = sanitize_username(request.form.get("username", ""))
     except ValueError as e:
         return render_template("signin.html", error=str(e))
-
     try:
         password = sanitize_password(request.form.get("password", ""))
     except ValueError as e:
         return render_template("signin.html", error=str(e))
 
     user = user_collection.find_one({"username": username})
-
     if user is None or not check_password_hash(user.get("password", ""), password):
         return render_template("signin.html", error="Invalid username or password")
 
@@ -266,7 +277,6 @@ def user_signup():
     except ValueError as e:
         return render_template("signup.html", error=str(e),
                                previous_username=request.form.get("username", ""))
-
     try:
         password = sanitize_password(request.form.get("password", ""))
     except ValueError as e:
@@ -285,7 +295,6 @@ def user_signup():
 
     hashed = generate_password_hash(password)
     user_collection.insert_one({"username": username, "password": hashed})
-
     session["username"] = username
     session.modified = True
     return redirect(url_for("start_index"))
@@ -299,7 +308,6 @@ def upload_image():
 
     file = request.files["image"]
 
-    # ── Validate tags ─────────────────────────────────────────────────────────
     try:
         tag_list = sanitize_tags(request.form.get("tags", ""))
     except ValueError as e:
@@ -308,7 +316,6 @@ def upload_image():
                                previous_location=request.form.get("location_label", ""),
                                username=session["username"])
 
-    # ── Validate location label ───────────────────────────────────────────────
     try:
         location_label = sanitize_location_label(request.form.get("location_label", ""))
     except ValueError as e:
@@ -320,20 +327,17 @@ def upload_image():
     if file.filename == "":
         return "No selected file", 400
 
-    # ── Save file ─────────────────────────────────────────────────────────────
     filename = secure_filename(file.filename)
     filename = f"{uuid.uuid4().hex}_{filename}"
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(filepath)
 
-    # ── Resolve coordinates ───────────────────────────────────────────────────
     location_data = extract_exif_gps(filepath)
 
     if location_data is None:
         raw_lat = request.form.get("latitude", "").strip()
         raw_lon = request.form.get("longitude", "").strip()
         raw_src = request.form.get("geo_source", "").strip()
-
         if raw_lat and raw_lon:
             try:
                 lat = sanitize_coordinate(raw_lat, -90.0,  90.0)
@@ -343,10 +347,9 @@ def upload_image():
             except ValueError:
                 location_data = None
 
-    # ── Build and insert document ─────────────────────────────────────────────
     data = {
         "image":          filename,
-        "tags":           tag_list,              # list of tag strings e.g. ["mushroom", "edible"]
+        "tags":           tag_list,
         "location_label": location_label,
         "location_geo":   location_data,
         "uploaded_by":    session["username"],
@@ -355,13 +358,11 @@ def upload_image():
 
     result = photo_collection.insert_one(data)
     print(f"Image uploaded. ID: {result.inserted_id} | tags: {tag_list} | geo: {location_data}")
-
     return redirect(url_for("start_index"))
 
 
 if __name__ == "__main__":
     env = os.getenv("FLASK_ENV", "development")
-
     if env == "production":
         app.run(host="0.0.0.0", port=5050)
     elif SSL_CERT and SSL_KEY:
