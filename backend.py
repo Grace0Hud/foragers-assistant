@@ -17,6 +17,8 @@ load_dotenv()
 MONGODB_URI = os.getenv("MONGODB_URI")
 UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER")
 SECRET_KEY = os.getenv("SECRET_KEY")
+SSL_CERT = os.getenv("SSL_CERT")
+SSL_KEY = os.getenv("SSL_KEY")
 
 # Connecting to the database.
 client = MongoClient(MONGODB_URI)
@@ -362,4 +364,14 @@ def upload_image():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5050)
+    env = os.getenv("FLASK_ENV", "development")
+
+    if env == "production":
+        # On AWS, Nginx terminates HTTPS and proxies to Flask over plain HTTP
+        app.run(host="0.0.0.0", port=5050)
+    elif SSL_CERT and SSL_KEY:
+        # Local development: Flask serves HTTPS directly with a self-signed cert
+        app.run(host="0.0.0.0", port=5050, ssl_context=(SSL_CERT, SSL_KEY))
+    else:
+        # Local fallback: plain HTTP (geolocation won't work outside localhost)
+        app.run(host="0.0.0.0", port=5050)
