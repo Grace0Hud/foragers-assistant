@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
 from functools import wraps
+from bson import ObjectId
 import os
 import uuid
 import re
@@ -26,7 +27,6 @@ db = client["user-data"]
 photo_collection = db["user-photos"]
 user_collection = db["user-login"]
 
-# Starting app.
 app = Flask(__name__)
 app.config["SECRET_KEY"] = SECRET_KEY
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -125,6 +125,14 @@ def sanitize_coordinate(value: str, low: float, high: float) -> float:
     return round(f, 7)
 
 
+def parse_object_id(id_str: str):
+    """Safely parse a MongoDB ObjectId string; returns None if invalid."""
+    try:
+        return ObjectId(id_str)
+    except Exception:
+        return None
+
+
 # ── EXIF GPS extraction ───────────────────────────────────────────────────────
 
 def _dms_to_decimal(dms_values, ref: str) -> float:
@@ -169,6 +177,8 @@ def extract_exif_gps(filepath: str):
 
 def serialize_doc(doc: dict) -> dict:
     """Convert a MongoDB document to a JSON-safe dict."""
+    if "_id" in doc:
+        doc["_id"] = str(doc["_id"])
     if doc.get("uploaded_at"):
         doc["uploaded_at"] = doc["uploaded_at"].isoformat()
     return doc
@@ -179,7 +189,6 @@ def serialize_doc(doc: dict) -> dict:
 @app.route("/")
 @login_required
 def start_index():
-    # Home always goes to the gallery
     return redirect(url_for("get_gallery"))
 
 
@@ -189,15 +198,86 @@ def get_gallery():
     return render_template("gallery.html", username=session["username"])
 
 
+@app.route("/my-uploads")
+@login_required
+def my_uploads_page():
+    return render_template("myuploads.html", username=session["username"])
+
+
+@app.route("/my-uploads/feed")
+@login_required
+def api_my_uploads():
+    """All posts by the current user, sorted newest-first."""
+    projection = {
+        "image":          1,
+        "tags":           1,
+        "location_label": 1,
+        "manual_address": 1,
+        "location_geo":   1,
+        "uploaded_at":    1,
+    }
+    docs = [
+        serialize_doc(doc)
+        for doc in photo_collection
+            .find({"uploaded_by": session["username"]}, projection)
+            .sort("uploaded_at", -1)
+    ]
+    return jsonify({"images": docs})
+
+
+@app.route("/my-uploads/delete/<doc_id>", methods=["DELETE"])
+@login_required
+def delete_upload(doc_id):
+    """Delete a post and its image file. Only the owner can delete."""
+    oid = parse_object_id(doc_id)
+    if not oid:
+        return jsonify({"error": "Invalid ID"}), 400
+
+    doc = photo_collection.find_one(
+        {"_id": oid, "uploaded_by": session["username"]},
+        {"image": 1}
+    )
+    if not doc:
+        return jsonify({"error": "Not found or not yours"}), 404
+
+    # Delete image file from disk
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], doc["image"])
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    photo_collection.delete_one({"_id": oid})
+    return jsonify({"ok": True})
+
+
+@app.route("/my-uploads/edit-tags/<doc_id>", methods=["PATCH"])
+@login_required
+def edit_tags(doc_id):
+    """Replace the tags list on a post. Only the owner can edit."""
+    oid = parse_object_id(doc_id)
+    if not oid:
+        return jsonify({"error": "Invalid ID"}), 400
+
+    data = request.get_json(silent=True) or {}
+    raw_tags = data.get("tags", "")
+
+    try:
+        tag_list = sanitize_tags(raw_tags)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    result = photo_collection.update_one(
+        {"_id": oid, "uploaded_by": session["username"]},
+        {"$set": {"tags": tag_list}}
+    )
+    if result.matched_count == 0:
+        return jsonify({"error": "Not found or not yours"}), 404
+
+    return jsonify({"ok": True, "tags": tag_list})
+
+
 @app.route("/gallery/feed")
 @login_required
 def api_feed():
-    """
-    Paginated feed of all submissions sorted newest-first.
-    Query params:
-      page  — 1-based page number (default 1)
-      limit — items per page (default 20, max 50)
-    """
     try:
         page  = max(1, int(request.args.get("page",  1)))
         limit = min(50, max(1, int(request.args.get("limit", 20))))
@@ -205,7 +285,6 @@ def api_feed():
         return jsonify({"error": "Invalid pagination parameters"}), 400
 
     skip = (page - 1) * limit
-
     projection = {
         "_id":            0,
         "image":          1,
@@ -226,7 +305,6 @@ def api_feed():
 
     docs = [serialize_doc(doc) for doc in cursor]
     total = photo_collection.count_documents({})
-
     return jsonify({
         "page":     page,
         "limit":    limit,
@@ -240,7 +318,6 @@ def api_feed():
 @login_required
 def api_search():
     raw_tags = request.args.getlist("tags")
-
     if not raw_tags:
         return jsonify({"error": "At least one tag is required"}), 400
 
@@ -251,8 +328,6 @@ def api_search():
         except ValueError:
             return jsonify({"error": f"Invalid tag: {raw}"}), 400
 
-    query = {"tags": {"$all": clean_tags}}
-
     projection = {
         "_id":            0,
         "image":          1,
@@ -262,8 +337,12 @@ def api_search():
         "location_geo":   1,
         "uploaded_at":    1,
     }
-
-    docs = [serialize_doc(doc) for doc in photo_collection.find(query, projection).sort("uploaded_at", -1)]
+    docs = [
+        serialize_doc(doc)
+        for doc in photo_collection
+            .find({"tags": {"$all": clean_tags}}, projection)
+            .sort("uploaded_at", -1)
+    ]
     return jsonify({"tags": clean_tags, "images": docs})
 
 
@@ -401,7 +480,6 @@ def upload_image():
 
     result = photo_collection.insert_one(data)
     print(f"Image uploaded. ID: {result.inserted_id} | tags: {tag_list} | geo: {location_data}")
-    # Return JSON so the JS upload handler can close the modal and refresh the feed
     return jsonify({"ok": True, "id": str(result.inserted_id)}), 201
 
 

@@ -6,17 +6,34 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script defer src="{{ url_for('static', filename='frontend.js') }}"></script>
     <style>
+      /* ── Upload button in nav — matches anchor pill style exactly ────── */
+      #navUploadBtn {
+        text-decoration: none;
+        font-weight: 800;
+        padding: 0.6rem 1.2rem;
+        border-radius: 999px;
+        background: var(--secondary_light);
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-size: 1rem;
+        font-family: inherit;
+        transition: transform 0.15s ease, background 0.2s ease;
+        box-shadow: none;
+        width: auto;
+        letter-spacing: normal;
+      }
+      #navUploadBtn:hover {
+        background: var(--secondary_light);
+        transform: translateY(-2px);
+        box-shadow: none;
+      }
       /* ── Active search tag pills ───────────────────────────────────────── */
       .search-tag-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.3rem;
-        background: var(--secondary_dark);
-        color: white;
-        padding: 0.25rem 0.65rem;
-        border-radius: 999px;
-        font-size: 0.9rem;
-        font-weight: 700;
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        background: var(--secondary_dark); color: white;
+        padding: 0.25rem 0.65rem; border-radius: 999px;
+        font-size: 0.9rem; font-weight: 700;
       }
       .search-tag-pill button {
         background: none; border: none; color: white;
@@ -43,8 +60,7 @@
       .card-tag-strip {
         position: absolute; bottom: 0; left: 0; right: 0;
         background: rgba(48,54,47,0.75);
-        padding: 0.3rem 0.5rem;
-        display: flex; flex-wrap: wrap; gap: 0.25rem;
+        padding: 0.3rem 0.5rem; display: flex; flex-wrap: wrap; gap: 0.25rem;
       }
       .card-tag {
         background: var(--primary); color: white;
@@ -52,30 +68,15 @@
         padding: 0.1rem 0.45rem; border-radius: 999px;
       }
 
-      /* ── Infinite scroll sentinel ─────────────────────────────────────── */
+      /* ── Infinite scroll ──────────────────────────────────────────────── */
       #feedSentinel { height: 1px; }
       #feedLoader { text-align: center; color: var(--light); padding: 1rem; font-weight: 700; }
-
-      /* ── FAB upload button ────────────────────────────────────────────── */
-      #fabUpload {
-        position: fixed; bottom: 2rem; right: 2rem;
-        width: 3.5rem; height: 3.5rem;
-        border-radius: 999px;
-        background: linear-gradient(135deg, var(--primary), var(--secondary_dark));
-        color: white; border: none; font-size: 2rem; font-weight: 900;
-        cursor: pointer; box-shadow: 0 8px 25px rgba(0,0,0,0.35);
-        display: flex; align-items: center; justify-content: center;
-        transition: transform 0.15s ease, box-shadow 0.2s ease;
-        z-index: 500; line-height: 1;
-      }
-      #fabUpload:hover { transform: scale(1.1); box-shadow: 0 14px 35px rgba(0,0,0,0.45); }
 
       /* ── Upload modal ─────────────────────────────────────────────────── */
       #uploadOverlay {
         display: none; position: fixed; inset: 0;
         background: rgba(0,0,0,0.65); z-index: 600;
         justify-content: center; align-items: flex-end;
-        padding-bottom: 0;
       }
       #uploadOverlay.open { display: flex; }
       #uploadPanel {
@@ -84,8 +85,7 @@
         box-shadow: 0 -20px 60px rgba(0,0,0,0.35);
         width: 100%; max-width: 680px;
         max-height: 92vh; overflow-y: auto;
-        padding: 2rem 2rem 2.5rem;
-        position: relative;
+        padding: 2rem 2rem 2.5rem; position: relative;
         animation: slideUp 0.25s ease;
       }
       @keyframes slideUp {
@@ -104,7 +104,7 @@
       #uploadPanel h2 { margin: 0 0 1.2rem; color: var(--dark); font-size: 1.3rem; }
       #uploadPanel form { box-shadow: none; padding: 0; border-radius: 0; margin-bottom: 0; }
 
-      /* Tag pill styles (shared with upload page) */
+      /* Tag pill styles */
       .tag-input-wrapper {
         display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
         padding: 0.6rem; border: 2px solid var(--primary);
@@ -191,6 +191,8 @@
     <h1>Forager's Assistant</h1>
     <nav>
       <a href="{{ url_for('get_gallery') }}">Gallery</a>
+      <a href="{{ url_for('my_uploads_page') }}">My Uploads</a>
+      <button id="navUploadBtn" aria-label="Upload new foragable">&#43; Upload</button>
       <a href="{{ url_for('logout') }}" class="nav-logout">Sign Out ({{ username }})</a>
     </nav>
 
@@ -210,21 +212,16 @@
     <div id="feedLoader"></div>
     <div id="feedSentinel"></div>
 
-    <!-- ── FAB upload button ──────────────────────────────────────────────── -->
-    <button id="fabUpload" aria-label="Upload new foragable" title="Upload">&#43;</button>
-
     <!-- ── Upload modal ───────────────────────────────────────────────────── -->
     <div id="uploadOverlay" aria-modal="true" role="dialog" aria-label="Upload foragable">
       <div id="uploadPanel">
         <button id="uploadPanelClose" aria-label="Close">&times;</button>
         <h2>Upload a Foragable</h2>
-
         <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
           <p>
             <label>Submission:</label>
             <input type="file" name="image" id="imageInput" accept="image/*" required>
           </p>
-
           <label>Species Tags:</label>
           <div class="tag-input-wrapper" id="tagPillBox">
             <input type="text" id="tagTextInput" placeholder="Type a tag and press Enter or comma…">
@@ -243,14 +240,12 @@
               Enter an address
             </label>
           </div>
-
           <div id="autoLocationSection">
             <p id="geoStatus" style="color:#7D7ABC; font-size:0.9rem; margin-top:-0.5rem;"></p>
             <input type="hidden" name="latitude"   id="latitude">
             <input type="hidden" name="longitude"  id="longitude">
             <input type="hidden" name="geo_source" id="geo_source">
           </div>
-
           <div id="manualLocationSection" style="display:none;">
             <input type="text" name="manual_address" id="manual_address"
                    maxlength="300" placeholder="e.g. 123 Oak Street, Portland, OR">
@@ -258,7 +253,6 @@
               Enter a full address. Coordinates will be looked up automatically.
             </p>
           </div>
-
           <p>
             <label>
               Location Description
@@ -267,7 +261,6 @@
             <input type="text" name="location_label" id="location_label"
                    maxlength="200" placeholder="e.g. North trail near Oak Park">
           </p>
-
           <div id="uploadError" style="display:none;" class="error-message"></div>
           <button type="submit">Upload</button>
         </form>
