@@ -17,212 +17,180 @@
         border-radius: 999px;
         font-size: 0.9rem;
         font-weight: 700;
-        cursor: default;
       }
       .search-tag-pill button {
-        background: none;
-        border: none;
-        color: white;
-        cursor: pointer;
-        font-size: 1rem;
-        line-height: 1;
-        padding: 0;
-        width: auto;
-        box-shadow: none;
-        font-weight: 900;
+        background: none; border: none; color: white;
+        cursor: pointer; font-size: 1rem; line-height: 1;
+        padding: 0; width: auto; box-shadow: none; font-weight: 900;
       }
-      .search-tag-pill button:hover {
-        transform: none;
-        box-shadow: none;
-        color: var(--light);
-      }
-      #activeTags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-top: 0.5rem;
-        min-height: 1.5rem;
-      }
+      .search-tag-pill button:hover { transform: none; box-shadow: none; color: var(--light); }
+      #activeTags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; min-height: 1.5rem; }
 
       /* ── Image grid cards ─────────────────────────────────────────────── */
       .grid-card {
-        position: relative;
-        cursor: pointer;
-        border-radius: var(--radius-md);
-        overflow: hidden;
+        position: relative; cursor: pointer;
+        border-radius: var(--radius-md); overflow: hidden;
         border: 3px solid var(--primary);
         box-shadow: 0 15px 35px rgba(0,0,0,0.25);
         transition: transform 0.2s ease, box-shadow 0.2s ease;
       }
-      .grid-card:hover {
-        transform: scale(1.04);
-        box-shadow: 0 25px 60px rgba(0,0,0,0.35);
-      }
+      .grid-card:hover { transform: scale(1.04); box-shadow: 0 25px 60px rgba(0,0,0,0.35); }
       .grid-card img {
-        width: 100%;
-        height: 200px;
-        object-fit: cover;
-        display: block;
-        border-radius: 0;
-        border: none;
-        box-shadow: none;
-        transition: none;
+        width: 100%; height: 200px; object-fit: cover; display: block;
+        border-radius: 0; border: none; box-shadow: none; transition: none;
       }
-      .grid-card:hover img {
-        transform: none;
-        box-shadow: none;
-      }
+      .grid-card:hover img { transform: none; box-shadow: none; }
       .card-tag-strip {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
+        position: absolute; bottom: 0; left: 0; right: 0;
         background: rgba(48,54,47,0.75);
         padding: 0.3rem 0.5rem;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.25rem;
+        display: flex; flex-wrap: wrap; gap: 0.25rem;
       }
       .card-tag {
-        background: var(--primary);
-        color: white;
-        font-size: 0.7rem;
-        font-weight: 800;
-        padding: 0.1rem 0.45rem;
-        border-radius: 999px;
+        background: var(--primary); color: white;
+        font-size: 0.7rem; font-weight: 800;
+        padding: 0.1rem 0.45rem; border-radius: 999px;
       }
+
+      /* ── Infinite scroll sentinel ─────────────────────────────────────── */
+      #feedSentinel { height: 1px; }
+      #feedLoader { text-align: center; color: var(--light); padding: 1rem; font-weight: 700; }
+
+      /* ── FAB upload button ────────────────────────────────────────────── */
+      #fabUpload {
+        position: fixed; bottom: 2rem; right: 2rem;
+        width: 3.5rem; height: 3.5rem;
+        border-radius: 999px;
+        background: linear-gradient(135deg, var(--primary), var(--secondary_dark));
+        color: white; border: none; font-size: 2rem; font-weight: 900;
+        cursor: pointer; box-shadow: 0 8px 25px rgba(0,0,0,0.35);
+        display: flex; align-items: center; justify-content: center;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+        z-index: 500; line-height: 1;
+      }
+      #fabUpload:hover { transform: scale(1.1); box-shadow: 0 14px 35px rgba(0,0,0,0.45); }
+
+      /* ── Upload modal ─────────────────────────────────────────────────── */
+      #uploadOverlay {
+        display: none; position: fixed; inset: 0;
+        background: rgba(0,0,0,0.65); z-index: 600;
+        justify-content: center; align-items: flex-end;
+        padding-bottom: 0;
+      }
+      #uploadOverlay.open { display: flex; }
+      #uploadPanel {
+        background: white;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        box-shadow: 0 -20px 60px rgba(0,0,0,0.35);
+        width: 100%; max-width: 680px;
+        max-height: 92vh; overflow-y: auto;
+        padding: 2rem 2rem 2.5rem;
+        position: relative;
+        animation: slideUp 0.25s ease;
+      }
+      @keyframes slideUp {
+        from { transform: translateY(60px); opacity: 0; }
+        to   { transform: translateY(0);    opacity: 1; }
+      }
+      #uploadPanelClose {
+        position: absolute; top: 1rem; right: 1rem;
+        background: rgba(0,0,0,0.12); color: var(--dark);
+        border: none; border-radius: 999px;
+        width: 2rem; height: 2rem; font-size: 1.1rem; font-weight: 900;
+        cursor: pointer; display: flex; align-items: center; justify-content: center;
+        box-shadow: none; padding: 0;
+      }
+      #uploadPanelClose:hover { background: var(--tertiary); color: white; transform: none; box-shadow: none; }
+      #uploadPanel h2 { margin: 0 0 1.2rem; color: var(--dark); font-size: 1.3rem; }
+      #uploadPanel form { box-shadow: none; padding: 0; border-radius: 0; margin-bottom: 0; }
+
+      /* Tag pill styles (shared with upload page) */
+      .tag-input-wrapper {
+        display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+        padding: 0.6rem; border: 2px solid var(--primary);
+        border-radius: var(--radius-md); background: white;
+        margin-bottom: 1.2rem; cursor: text;
+      }
+      .tag-input-wrapper:focus-within {
+        border-color: var(--secondary_dark);
+        box-shadow: 0 0 0 4px rgba(125,122,188,0.25);
+      }
+      .tag-pill {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        background: var(--primary); color: white;
+        padding: 0.25rem 0.65rem; border-radius: 999px;
+        font-size: 0.9rem; font-weight: 700;
+      }
+      .tag-pill button {
+        background: none; border: none; color: white; cursor: pointer;
+        font-size: 1rem; line-height: 1; padding: 0; width: auto;
+        box-shadow: none; font-weight: 900;
+      }
+      .tag-pill button:hover { transform: none; box-shadow: none; color: var(--light); }
+      #tagTextInput {
+        border: none; outline: none; font-size: 1rem;
+        flex: 1; min-width: 120px; padding: 0.2rem; margin-bottom: 0;
+      }
+      .tag-hint { font-size: 0.85rem; color: #7D7ABC; margin-top: -1rem; margin-bottom: 1.2rem; }
 
       /* ── Detail modal ─────────────────────────────────────────────────── */
       #detailOverlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.65);
-        z-index: 1000;
-        justify-content: center;
-        align-items: center;
-        padding: 1rem;
+        display: none; position: fixed; inset: 0;
+        background: rgba(0,0,0,0.65); z-index: 700;
+        justify-content: center; align-items: center; padding: 1rem;
       }
-      #detailOverlay.open {
-        display: flex;
-      }
+      #detailOverlay.open { display: flex; }
       #detailPanel {
-        background: white;
-        border-radius: var(--radius-lg);
+        background: white; border-radius: var(--radius-lg);
         box-shadow: 0 30px 80px rgba(0,0,0,0.4);
-        max-width: 620px;
-        width: 100%;
-        max-height: 90vh;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
+        max-width: 620px; width: 100%; max-height: 90vh;
+        overflow-y: auto; display: flex; flex-direction: column;
       }
       #detailPanel img {
-        width: 100%;
-        max-height: 340px;
-        object-fit: cover;
+        width: 100%; max-height: 340px; object-fit: cover;
         border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-        border: none;
-        box-shadow: none;
+        border: none; box-shadow: none;
       }
-      #detailPanel img:hover {
-        transform: none;
-        box-shadow: none;
-      }
-      #detailBody {
-        padding: 1.4rem;
-      }
-      #detailBody h3 {
-        color: var(--dark);
-        font-size: 1.1rem;
-        margin: 0 0 0.8rem;
-      }
-      .detail-row {
-        margin-bottom: 1rem;
-      }
+      #detailPanel img:hover { transform: none; box-shadow: none; }
+      #detailBody { padding: 1.4rem; }
+      .detail-row { margin-bottom: 1rem; }
       .detail-label {
-        font-weight: 800;
-        font-size: 0.85rem;
-        color: var(--secondary_dark);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 0.35rem;
+        font-weight: 800; font-size: 0.85rem; color: var(--secondary_dark);
+        text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.35rem;
       }
-      .detail-tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.4rem;
-      }
+      .detail-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
       .detail-tag-pill {
-        background: var(--primary);
-        color: white;
-        padding: 0.25rem 0.7rem;
-        border-radius: 999px;
-        font-size: 0.9rem;
-        font-weight: 700;
-        cursor: pointer;
+        background: var(--primary); color: white;
+        padding: 0.25rem 0.7rem; border-radius: 999px;
+        font-size: 0.9rem; font-weight: 700; cursor: pointer;
         transition: background 0.15s ease, transform 0.1s ease;
       }
-      .detail-tag-pill:hover {
-        background: var(--secondary_dark);
-        transform: translateY(-1px);
-      }
-      .detail-tag-pill.active-tag {
-        background: var(--secondary_dark);
-        outline: 2px solid var(--secondary_light);
-      }
+      .detail-tag-pill:hover { background: var(--secondary_dark); transform: translateY(-1px); }
+      .detail-tag-pill.active-tag { background: var(--secondary_dark); outline: 2px solid var(--secondary_light); }
       .detail-location-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        color: var(--secondary_dark);
-        font-weight: 700;
-        text-decoration: none;
-        font-size: 0.95rem;
+        display: inline-flex; align-items: center; gap: 0.4rem;
+        color: var(--secondary_dark); font-weight: 700;
+        text-decoration: none; font-size: 0.95rem;
       }
-      .detail-location-link:hover {
-        color: var(--tertiary);
-        text-decoration: underline;
-      }
-      .detail-location-text {
-        font-size: 0.95rem;
-        color: var(--dark);
-      }
+      .detail-location-link:hover { color: var(--tertiary); text-decoration: underline; }
+      .detail-location-text { font-size: 0.95rem; color: var(--dark); }
       #detailClose {
-        position: absolute;
-        top: 0.75rem;
-        right: 0.75rem;
-        background: rgba(0,0,0,0.45);
-        color: white;
-        border: none;
-        border-radius: 999px;
-        width: 2rem;
-        height: 2rem;
-        font-size: 1.1rem;
-        font-weight: 900;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: none;
-        padding: 0;
+        position: absolute; top: 0.75rem; right: 0.75rem;
+        background: rgba(0,0,0,0.45); color: white; border: none;
+        border-radius: 999px; width: 2rem; height: 2rem;
+        font-size: 1.1rem; font-weight: 900; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: none; padding: 0;
       }
-      #detailClose:hover {
-        background: var(--tertiary);
-        transform: none;
-        box-shadow: none;
-      }
-      #detailPanelWrap {
-        position: relative;
-      }
+      #detailClose:hover { background: var(--tertiary); transform: none; box-shadow: none; }
+      #detailPanelWrap { position: relative; }
     </style>
   </head>
 
   <body>
     <h1>Forager's Assistant</h1>
     <nav>
-      <a href="{{ url_for('start_index') }}">Home</a>
-      <a href="{{ url_for('get_gallery') }}">Review Foragables</a>
+      <a href="{{ url_for('get_gallery') }}">Gallery</a>
       <a href="{{ url_for('logout') }}" class="nav-logout">Sign Out ({{ username }})</a>
     </nav>
 
@@ -239,6 +207,72 @@
 
     <div id="searchStatus"></div>
     <div id="resultsGrid" class="grid"></div>
+    <div id="feedLoader"></div>
+    <div id="feedSentinel"></div>
+
+    <!-- ── FAB upload button ──────────────────────────────────────────────── -->
+    <button id="fabUpload" aria-label="Upload new foragable" title="Upload">&#43;</button>
+
+    <!-- ── Upload modal ───────────────────────────────────────────────────── -->
+    <div id="uploadOverlay" aria-modal="true" role="dialog" aria-label="Upload foragable">
+      <div id="uploadPanel">
+        <button id="uploadPanelClose" aria-label="Close">&times;</button>
+        <h2>Upload a Foragable</h2>
+
+        <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
+          <p>
+            <label>Submission:</label>
+            <input type="file" name="image" id="imageInput" accept="image/*" required>
+          </p>
+
+          <label>Species Tags:</label>
+          <div class="tag-input-wrapper" id="tagPillBox">
+            <input type="text" id="tagTextInput" placeholder="Type a tag and press Enter or comma…">
+          </div>
+          <p class="tag-hint">Add up to 10 tags. Letters and spaces only. Press Enter or comma to add each one.</p>
+          <input type="hidden" name="tags" id="tagsHidden" value="">
+
+          <label>Location</label>
+          <div style="display:flex; gap:0.75rem; margin-bottom:1rem; flex-wrap:wrap;">
+            <label style="display:flex; align-items:center; gap:0.4rem; font-weight:600; cursor:pointer;">
+              <input type="radio" name="location_mode" id="locModeAuto" value="auto" checked>
+              Use my device / photo location
+            </label>
+            <label style="display:flex; align-items:center; gap:0.4rem; font-weight:600; cursor:pointer;">
+              <input type="radio" name="location_mode" id="locModeManual" value="manual">
+              Enter an address
+            </label>
+          </div>
+
+          <div id="autoLocationSection">
+            <p id="geoStatus" style="color:#7D7ABC; font-size:0.9rem; margin-top:-0.5rem;"></p>
+            <input type="hidden" name="latitude"   id="latitude">
+            <input type="hidden" name="longitude"  id="longitude">
+            <input type="hidden" name="geo_source" id="geo_source">
+          </div>
+
+          <div id="manualLocationSection" style="display:none;">
+            <input type="text" name="manual_address" id="manual_address"
+                   maxlength="300" placeholder="e.g. 123 Oak Street, Portland, OR">
+            <p style="font-size:0.85rem; color:#7D7ABC; margin-top:-0.8rem;">
+              Enter a full address. Coordinates will be looked up automatically.
+            </p>
+          </div>
+
+          <p>
+            <label>
+              Location Description
+              <span style="font-weight:400; font-size:0.9rem;">(optional extra details)</span>
+            </label>
+            <input type="text" name="location_label" id="location_label"
+                   maxlength="200" placeholder="e.g. North trail near Oak Park">
+          </p>
+
+          <div id="uploadError" style="display:none;" class="error-message"></div>
+          <button type="submit">Upload</button>
+        </form>
+      </div>
+    </div>
 
     <!-- ── Detail modal ───────────────────────────────────────────────────── -->
     <div id="detailOverlay" role="dialog" aria-modal="true" aria-label="Photo details">
@@ -253,7 +287,7 @@
             <div class="detail-tags" id="detailTags"></div>
           </div>
           <div class="detail-row" id="detailLocationLabelRow">
-            <div class="detail-label">Location Description</div>
+            <div class="detail-label">Location</div>
             <div class="detail-location-text" id="detailLocationLabel"></div>
           </div>
           <div class="detail-row" id="detailCoordsRow">

@@ -53,7 +53,7 @@ def sanitize_field_key(key: str) -> str:
 
 
 def sanitize_tag(value: str) -> str:
-    TAG_RE = re.compile(r"^[A-Za-z]+$")
+    TAG_RE = re.compile(r"^[A-Za-z ]+$")
     if not isinstance(value, str):
         raise ValueError("Tag must be a string")
     v = value.strip()
@@ -66,10 +66,6 @@ def sanitize_tag(value: str) -> str:
 
 
 def sanitize_tags(raw: str) -> list:
-    """
-    Parse and sanitize a comma-separated tag string submitted from the form.
-    Returns a deduplicated list of clean lowercase tag strings (1–10 items).
-    """
     if not isinstance(raw, str):
         raise ValueError("Tags must be a string")
     parts = [p.strip().lower() for p in raw.split(",") if p.strip()]
@@ -169,12 +165,22 @@ def extract_exif_gps(filepath: str):
         return None
 
 
+# ── Shared doc serializer ─────────────────────────────────────────────────────
+
+def serialize_doc(doc: dict) -> dict:
+    """Convert a MongoDB document to a JSON-safe dict."""
+    if doc.get("uploaded_at"):
+        doc["uploaded_at"] = doc["uploaded_at"].isoformat()
+    return doc
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
 @login_required
 def start_index():
-    return render_template("upload.html", username=session["username"])
+    # Home always goes to the gallery
+    return redirect(url_for("get_gallery"))
 
 
 @app.route("/gallery")
@@ -183,27 +189,23 @@ def get_gallery():
     return render_template("gallery.html", username=session["username"])
 
 
-@app.route("/gallery/search")
+@app.route("/gallery/feed")
 @login_required
-def api_search():
-    # Accept one or more ?tags= parameters for AND filtering
-    raw_tags = request.args.getlist("tags")
+def api_feed():
+    """
+    Paginated feed of all submissions sorted newest-first.
+    Query params:
+      page  — 1-based page number (default 1)
+      limit — items per page (default 20, max 50)
+    """
+    try:
+        page  = max(1, int(request.args.get("page",  1)))
+        limit = min(50, max(1, int(request.args.get("limit", 20))))
+    except ValueError:
+        return jsonify({"error": "Invalid pagination parameters"}), 400
 
-    if not raw_tags:
-        return jsonify({"error": "At least one tag is required"}), 400
+    skip = (page - 1) * limit
 
-    # Sanitize every tag
-    clean_tags = []
-    for raw in raw_tags:
-        try:
-            clean_tags.append(sanitize_tag(raw.lower()))
-        except ValueError:
-            return jsonify({"error": f"Invalid tag: {raw}"}), 400
-
-    # Build an $all query: document's tags array must contain every searched tag
-    query = {"tags": {"$all": clean_tags}}
-
-    # Return full metadata needed by the detail panel (exclude internal _id)
     projection = {
         "_id":            0,
         "image":          1,
@@ -214,13 +216,54 @@ def api_search():
         "uploaded_at":    1,
     }
 
-    docs = list(photo_collection.find(query, projection))
+    cursor = (
+        photo_collection
+        .find({}, projection)
+        .sort("uploaded_at", -1)
+        .skip(skip)
+        .limit(limit)
+    )
 
-    # Convert datetime to ISO string so JSON serialization works
-    for doc in docs:
-        if doc.get("uploaded_at"):
-            doc["uploaded_at"] = doc["uploaded_at"].isoformat()
+    docs = [serialize_doc(doc) for doc in cursor]
+    total = photo_collection.count_documents({})
 
+    return jsonify({
+        "page":     page,
+        "limit":    limit,
+        "total":    total,
+        "has_more": (skip + len(docs)) < total,
+        "images":   docs,
+    })
+
+
+@app.route("/gallery/search")
+@login_required
+def api_search():
+    raw_tags = request.args.getlist("tags")
+
+    if not raw_tags:
+        return jsonify({"error": "At least one tag is required"}), 400
+
+    clean_tags = []
+    for raw in raw_tags:
+        try:
+            clean_tags.append(sanitize_tag(raw.lower()))
+        except ValueError:
+            return jsonify({"error": f"Invalid tag: {raw}"}), 400
+
+    query = {"tags": {"$all": clean_tags}}
+
+    projection = {
+        "_id":            0,
+        "image":          1,
+        "tags":           1,
+        "location_label": 1,
+        "manual_address": 1,
+        "location_geo":   1,
+        "uploaded_at":    1,
+    }
+
+    docs = [serialize_doc(doc) for doc in photo_collection.find(query, projection).sort("uploaded_at", -1)]
     return jsonify({"tags": clean_tags, "images": docs})
 
 
@@ -233,7 +276,7 @@ def uploaded_file(filename):
 @app.route("/login", methods=["GET"])
 def signin_page():
     if "username" in session:
-        return redirect(url_for("start_index"))
+        return redirect(url_for("get_gallery"))
     return render_template("signin.html")
 
 
@@ -254,7 +297,7 @@ def user_login():
 
     session["username"] = username
     session.modified = True
-    return redirect(url_for("start_index"))
+    return redirect(url_for("get_gallery"))
 
 
 @app.route("/logout")
@@ -266,7 +309,7 @@ def logout():
 @app.route("/signup", methods=["GET"])
 def signup_page():
     if "username" in session:
-        return redirect(url_for("start_index"))
+        return redirect(url_for("get_gallery"))
     return render_template("signup.html")
 
 
@@ -297,42 +340,34 @@ def user_signup():
     user_collection.insert_one({"username": username, "password": hashed})
     session["username"] = username
     session.modified = True
-    return redirect(url_for("start_index"))
+    return redirect(url_for("get_gallery"))
 
 
 @app.route("/upload", methods=["POST"])
 @login_required
 def upload_image():
     if "image" not in request.files:
-        return "No file part", 400
+        return jsonify({"error": "No file part"}), 400
 
     file = request.files["image"]
 
     try:
         tag_list = sanitize_tags(request.form.get("tags", ""))
     except ValueError as e:
-        return render_template("upload.html", error=str(e),
-                               previous_tags=request.form.get("tags", ""),
-                               previous_location=request.form.get("location_label", ""),
-                               username=session["username"])
+        return jsonify({"error": str(e)}), 400
 
     try:
         location_label = sanitize_location_label(request.form.get("location_label", ""))
     except ValueError as e:
-        return render_template("upload.html", error=str(e),
-                               previous_tags=request.form.get("tags", ""),
-                               previous_location=request.form.get("location_label", ""),
-                               previous_address=request.form.get("manual_address", ""),
-                               username=session["username"])
+        return jsonify({"error": str(e)}), 400
 
-    # Manual address (used when user chose "Enter an address" mode)
     try:
         manual_address = sanitize_location_label(request.form.get("manual_address", ""))
     except ValueError:
         manual_address = ""
 
     if file.filename == "":
-        return "No selected file", 400
+        return jsonify({"error": "No selected file"}), 400
 
     filename = secure_filename(file.filename)
     filename = f"{uuid.uuid4().hex}_{filename}"
@@ -349,7 +384,7 @@ def upload_image():
             try:
                 lat = sanitize_coordinate(raw_lat, -90.0,  90.0)
                 lon = sanitize_coordinate(raw_lon, -180.0, 180.0)
-                source = "browser" if raw_src == "browser" else "unknown"
+                source = "browser" if raw_src == "browser" else "address" if raw_src == "address" else "unknown"
                 location_data = {"latitude": lat, "longitude": lon, "source": source}
             except ValueError:
                 location_data = None
@@ -358,7 +393,7 @@ def upload_image():
         "image":          filename,
         "tags":           tag_list,
         "location_label": location_label,
-        "manual_address": manual_address,    # user-typed address (may be "")
+        "manual_address": manual_address,
         "location_geo":   location_data,
         "uploaded_by":    session["username"],
         "uploaded_at":    datetime.now(timezone.utc)
@@ -366,7 +401,8 @@ def upload_image():
 
     result = photo_collection.insert_one(data)
     print(f"Image uploaded. ID: {result.inserted_id} | tags: {tag_list} | geo: {location_data}")
-    return redirect(url_for("start_index"))
+    # Return JSON so the JS upload handler can close the modal and refresh the feed
+    return jsonify({"ok": True, "id": str(result.inserted_id)}), 201
 
 
 if __name__ == "__main__":

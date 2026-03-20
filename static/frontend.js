@@ -9,7 +9,7 @@ function sanitizeInput(value) {
 
 function validateTag(tag) {
     if (!tag || tag.length === 0 || tag.length > 128) return false;
-    return /^[A-Za-z]+$/.test(tag);
+    return /^[A-Za-z ]+$/.test(tag);
 }
 
 
@@ -63,22 +63,26 @@ function addUploadTagFromInput() {
     renderUploadTags();
 }
 
-function initUploadTagsFromHidden() {
-    const hidden = document.getElementById("tagsHidden");
-    if (!hidden || !hidden.value) return;
-    hidden.value.split(",").forEach(t => {
-        const clean = t.trim().toLowerCase();
-        if (clean && validateTag(clean) && !uploadTags.includes(clean)) {
-            uploadTags.push(clean);
-        }
-    });
+function resetUploadForm() {
+    uploadTags = [];
     renderUploadTags();
+    document.getElementById("uploadForm").reset();
+    document.getElementById("tagsHidden").value = "";
+    document.getElementById("geoStatus").textContent = "";
+    document.getElementById("latitude").value = "";
+    document.getElementById("longitude").value = "";
+    document.getElementById("geo_source").value = "";
+    document.getElementById("autoLocationSection").style.display = "";
+    document.getElementById("manualLocationSection").style.display = "none";
+    document.getElementById("locModeAuto").checked = true;
+    document.getElementById("uploadError").style.display = "none";
+    exifCoords = null;
 }
 
 
 // ── Gallery: active search tags ───────────────────────────────────────────────
 
-let activeTags = [];   // tags currently filtering the gallery
+let activeTags = [];
 
 function renderActiveTags() {
     const container = $("#activeTags");
@@ -88,19 +92,23 @@ function renderActiveTags() {
         pill.find("button").on("click", () => {
             activeTags = activeTags.filter(t => t !== tag);
             renderActiveTags();
-            if (activeTags.length > 0) runSearch();
-            else {
+            if (activeTags.length > 0) {
+                runSearch();
+            } else {
+                // Back to feed mode
+                feedPage = 1;
+                feedExhausted = false;
                 $("#resultsGrid").empty();
                 $("#searchStatus").text("");
+                loadFeedPage();
             }
         });
         container.append(pill);
     });
 }
 
-// Add a tag to the active search filter and re-run the search.
 function addSearchTag(tag) {
-    const clean = sanitizeInput(tag).toLowerCase();
+    const clean = sanitizeInput(tag).toLowerCase().trim();
     if (!validateTag(clean)) return;
     if (activeTags.includes(clean)) return;
     activeTags.push(clean);
@@ -109,18 +117,57 @@ function addSearchTag(tag) {
 }
 
 
-// ── Gallery: search & render ──────────────────────────────────────────────────
+// ── Gallery: feed (no tags) ───────────────────────────────────────────────────
+
+const PAGE_SIZE   = 20;
+let   feedPage    = 1;
+let   feedLoading = false;
+let   feedExhausted = false;
+
+async function loadFeedPage() {
+    if (feedLoading || feedExhausted) return;
+    feedLoading = true;
+    $("#feedLoader").text("Loading…");
+
+    try {
+        const res  = await fetch(`/gallery/feed?page=${feedPage}&limit=${PAGE_SIZE}`);
+        const data = await res.json();
+
+        if (data.images && data.images.length > 0) {
+            appendCards(data.images);
+            feedPage++;
+        }
+
+        if (!data.has_more) {
+            feedExhausted = true;
+            $("#feedLoader").text(data.total > 0 ? "" : "No submissions yet. Be the first to upload!");
+        } else {
+            $("#feedLoader").text("");
+        }
+
+    } catch (err) {
+        console.error(err);
+        $("#feedLoader").text("Failed to load — please refresh.");
+    }
+
+    feedLoading = false;
+}
+
+
+// ── Gallery: tag search (replaces feed) ──────────────────────────────────────
 
 async function runSearch() {
     const status = $("#searchStatus");
     const grid   = $("#resultsGrid");
 
+    // Switch to search mode: clear feed state
+    feedExhausted = true;  // pause infinite scroll while in search mode
     status.text("Searching…");
     grid.empty();
+    $("#feedLoader").text("");
 
     try {
-        // Pass all active tags as repeated ?tags= params
-        const params = activeTags.map(t => `tags=${encodeURIComponent(t)}`).join("&");
+        const params   = activeTags.map(t => `tags=${encodeURIComponent(t)}`).join("&");
         const response = await fetch(`/gallery/search?${params}`);
 
         if (!response.ok) { status.text("Search failed."); return; }
@@ -133,27 +180,7 @@ async function runSearch() {
         }
 
         status.text(`Found ${data.images.length} image(s) for "${activeTags.join(" + ")}".`);
-
-        data.images.forEach(item => {
-            // Build tag strip preview (first 3 tags)
-            const tagPills = (item.tags || []).slice(0, 3)
-                .map(t => `<span class="card-tag">${t}</span>`).join("");
-
-            const card = $(`
-                <div class="grid-card" tabindex="0" role="button" aria-label="View details">
-                    <img src="/uploads/${encodeURIComponent(item.image)}"
-                         alt="Tagged ${(item.tags || []).join(', ')}">
-                    <div class="card-tag-strip">${tagPills}</div>
-                </div>
-            `);
-
-            card.on("click keydown", function (e) {
-                if (e.type === "keydown" && e.key !== "Enter") return;
-                openDetail(item);
-            });
-
-            grid.append(card);
-        });
+        appendCards(data.images);
 
     } catch (err) {
         console.error(err);
@@ -162,29 +189,67 @@ async function runSearch() {
 }
 
 
+// ── Shared card renderer ──────────────────────────────────────────────────────
+
+function appendCards(items) {
+    const grid = $("#resultsGrid");
+    items.forEach(item => {
+        const tagPills = (item.tags || []).slice(0, 3)
+            .map(t => `<span class="card-tag">${t}</span>`).join("");
+
+        const card = $(`
+            <div class="grid-card" tabindex="0" role="button" aria-label="View details">
+                <img src="/uploads/${encodeURIComponent(item.image)}"
+                     alt="Tagged ${(item.tags || []).join(', ')}">
+                <div class="card-tag-strip">${tagPills}</div>
+            </div>
+        `);
+
+        card.on("click keydown", function (e) {
+            if (e.type === "keydown" && e.key !== "Enter") return;
+            openDetail(item);
+        });
+
+        grid.append(card);
+    });
+}
+
+
+// ── Infinite scroll ───────────────────────────────────────────────────────────
+
+function initInfiniteScroll() {
+    const sentinel = document.getElementById("feedSentinel");
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && activeTags.length === 0) {
+            loadFeedPage();
+        }
+    }, { rootMargin: "200px" });
+
+    observer.observe(sentinel);
+}
+
+
 // ── Detail modal ──────────────────────────────────────────────────────────────
 
 function openDetail(item) {
     const activeTagSet = new Set(activeTags);
 
-    // Image
     $("#detailImg")
         .attr("src", `/uploads/${encodeURIComponent(item.image)}`)
         .attr("alt", (item.tags || []).join(", "));
 
-    // Tags — clickable pills, highlighted if already in active search
     const tagsEl = $("#detailTags").empty();
     (item.tags || []).forEach(tag => {
         const pill = $(`<span class="detail-tag-pill${activeTagSet.has(tag) ? " active-tag" : ""}">${tag}</span>`);
         pill.on("click", () => {
             addSearchTag(tag);
-            // Update highlight state without closing modal
             pill.addClass("active-tag");
         });
         tagsEl.append(pill);
     });
 
-    // Location label and/or manual address (both optional)
     const locationText = [item.manual_address, item.location_label].filter(Boolean).join(" — ");
     if (locationText) {
         $("#detailLocationLabel").text(locationText);
@@ -193,23 +258,18 @@ function openDetail(item) {
         $("#detailLocationLabelRow").hide();
     }
 
-    // Coordinates with Google Maps directions link
     const geo = item.location_geo;
     if (geo && geo.latitude != null && geo.longitude != null) {
-        const lat = geo.latitude;
-        const lon = geo.longitude;
-        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${geo.latitude},${geo.longitude}`;
         $("#detailCoordsLink").attr("href", mapsUrl);
-        $("#detailCoordsText").text(`${lat}, ${lon}`);
+        $("#detailCoordsText").text(`${geo.latitude}, ${geo.longitude}`);
         $("#detailCoordsRow").show();
     } else {
         $("#detailCoordsRow").hide();
     }
 
-    // Timestamp
     if (item.uploaded_at) {
-        const d = new Date(item.uploaded_at);
-        $("#detailUploadedAt").text(d.toLocaleString());
+        $("#detailUploadedAt").text(new Date(item.uploaded_at).toLocaleString());
     } else {
         $("#detailUploadedAt").text("Unknown");
     }
@@ -224,7 +284,37 @@ function closeDetail() {
 }
 
 
+// ── Upload modal ──────────────────────────────────────────────────────────────
+
+function openUploadModal() {
+    resetUploadForm();
+    $("#uploadOverlay").addClass("open");
+    document.body.style.overflow = "hidden";
+}
+
+function closeUploadModal() {
+    $("#uploadOverlay").removeClass("open");
+    document.body.style.overflow = "";
+}
+
+
+// ── Address geocoding (Nominatim / OpenStreetMap) ─────────────────────────────
+
+async function geocodeAddress(address) {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+    try {
+        const res  = await fetch(url, { headers: { "Accept-Language": "en", "User-Agent": "ForagersAssistant/1.0" } });
+        const data = await res.json();
+        if (data && data.length > 0)
+            return { latitude: parseFloat(data[0].lat).toFixed(7), longitude: parseFloat(data[0].lon).toFixed(7) };
+        return null;
+    } catch (_) { return null; }
+}
+
+
 // ── EXIF GPS extraction ───────────────────────────────────────────────────────
+
+let exifCoords = null;
 
 function extractExifGps(file) {
     return new Promise((resolve) => {
@@ -240,36 +330,33 @@ function extractExifGps(file) {
                     offset += 2;
                     if (marker === 0xFFE1) {
                         const exifStr = String.fromCharCode(
-                            view.getUint8(offset + 2), view.getUint8(offset + 3),
-                            view.getUint8(offset + 4), view.getUint8(offset + 5)
+                            view.getUint8(offset+2), view.getUint8(offset+3),
+                            view.getUint8(offset+4), view.getUint8(offset+5)
                         );
                         if (exifStr !== "Exif") { resolve(null); return; }
                         const tiffStart = offset + 8;
                         const littleEnd = view.getUint16(tiffStart) === 0x4949;
-                        const getUint16 = o => view.getUint16(tiffStart + o, littleEnd);
-                        const getUint32 = o => view.getUint32(tiffStart + o, littleEnd);
-                        const ifd0Offset = getUint32(4);
-                        const ifd0Count  = getUint16(ifd0Offset);
-                        let gpsIfdOffset = null;
-                        for (let i = 0; i < ifd0Count; i++) {
-                            const eo = ifd0Offset + 2 + i * 12;
-                            if (getUint16(eo) === 0x8825) { gpsIfdOffset = getUint32(eo + 8); break; }
+                        const getU16 = o => view.getUint16(tiffStart + o, littleEnd);
+                        const getU32 = o => view.getUint32(tiffStart + o, littleEnd);
+                        const ifd0   = getU32(4);
+                        let gpsOff   = null;
+                        for (let i = 0; i < getU16(ifd0); i++) {
+                            const eo = ifd0 + 2 + i * 12;
+                            if (getU16(eo) === 0x8825) { gpsOff = getU32(eo + 8); break; }
                         }
-                        if (gpsIfdOffset === null) { resolve(null); return; }
-                        const gpsCount = getUint16(gpsIfdOffset);
+                        if (!gpsOff) { resolve(null); return; }
                         const gps = {};
-                        for (let i = 0; i < gpsCount; i++) {
-                            const eo  = gpsIfdOffset + 2 + i * 12;
-                            const tag = getUint16(eo);
-                            const vo  = eo + 8;
+                        for (let i = 0; i < getU16(gpsOff); i++) {
+                            const eo  = gpsOff + 2 + i * 12;
+                            const tag = getU16(eo), vo = eo + 8;
                             if (tag === 1 || tag === 3)
-                                gps[tag] = String.fromCharCode(view.getUint8(tiffStart + getUint32(vo)));
+                                gps[tag] = String.fromCharCode(view.getUint8(tiffStart + getU32(vo)));
                             if (tag === 2 || tag === 4) {
-                                const d = getUint32(vo);
-                                gps[tag] = getUint32(d)/getUint32(d+4) + getUint32(d+8)/getUint32(d+12)/60 + getUint32(d+16)/getUint32(d+20)/3600;
+                                const d = getU32(vo);
+                                gps[tag] = getU32(d)/getU32(d+4) + getU32(d+8)/getU32(d+12)/60 + getU32(d+16)/getU32(d+20)/3600;
                             }
                         }
-                        if (gps[2] !== undefined && gps[4] !== undefined) {
+                        if (gps[2] != null && gps[4] != null) {
                             let lat = gps[2], lon = gps[4];
                             if (gps[1] === "S") lat = -lat;
                             if (gps[3] === "W") lon = -lon;
@@ -304,140 +391,18 @@ function getBrowserLocation() {
 }
 
 
-// ── Address geocoding via Nominatim (OpenStreetMap, free, no API key) ─────────
-
-async function geocodeAddress(address) {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
-    try {
-        const res = await fetch(url, {
-            headers: { "Accept-Language": "en", "User-Agent": "ForagersAssistant/1.0" }
-        });
-        const data = await res.json();
-        if (data && data.length > 0) {
-            return {
-                latitude:  parseFloat(data[0].lat).toFixed(7),
-                longitude: parseFloat(data[0].lon).toFixed(7)
-            };
-        }
-        return null;
-    } catch (_) {
-        return null;
-    }
-}
-
-
 // ── Page init ─────────────────────────────────────────────────────────────────
 
 $(function () {
 
-    // ── Upload page ───────────────────────────────────────────────────────────
-    if (document.getElementById("tagPillBox")) {
-        initUploadTagsFromHidden();
-
-        $("#tagPillBox").on("click", () => $("#tagTextInput").focus());
-
-        $("#tagTextInput").on("keydown", function (e) {
-            if (e.key === "Enter") { e.preventDefault(); addUploadTagFromInput(); }
-        }).on("input", function () {
-            if (this.value.includes(",")) addUploadTagFromInput();
-        });
-
-        // ── Location mode toggle ──────────────────────────────────────────────
-        $("input[name='location_mode']").on("change", function () {
-            if (this.value === "auto") {
-                $("#autoLocationSection").show();
-                $("#manualLocationSection").hide();
-            } else {
-                $("#autoLocationSection").hide();
-                $("#manualLocationSection").show();
-                $("#geoStatus").text("");
-            }
-        });
-
-        // Restore manual mode if form was re-rendered with a previous address
-        if ($("#manual_address").val()) {
-            $("#locModeManual").prop("checked", true).trigger("change");
-        }
-
-        let exifCoords = null;
-
-        $("#imageInput").on("change", async function () {
-            const file = this.files[0];
-            if (!file) return;
-            // Only attempt EXIF if in auto mode
-            if ($("#locModeAuto").is(":checked")) {
-                exifCoords = await extractExifGps(file);
-                $("#geoStatus").text(exifCoords
-                    ? `📍 GPS found in photo (${exifCoords.latitude}, ${exifCoords.longitude})`
-                    : "No GPS data in photo — will try device location on upload."
-                );
-            }
-        });
-
-        $("#uploadForm").on("submit", async function (e) {
-            e.preventDefault();
-            addUploadTagFromInput();
-
-            if (uploadTags.length === 0) {
-                if (!$("#tagError").length)
-                    $("<p id='tagError' style='color:#C06E52;font-weight:700;'>Please add at least one tag.</p>")
-                        .insertAfter("#tagPillBox");
-                return;
-            }
-            $("#tagError").remove();
-
-            const mode = $("input[name='location_mode']:checked").val();
-
-            if (mode === "manual") {
-                // Geocode the address the user typed
-                const address = sanitizeInput($("#manual_address").val().trim());
-                if (address) {
-                    $("#geoStatus").show().text("Looking up address…");
-                    const coords = await geocodeAddress(address);
-                    if (coords) {
-                        $("#latitude").val(coords.latitude);
-                        $("#longitude").val(coords.longitude);
-                        $("#geo_source").val("address");
-                        $("#geoStatus").text(`📍 Found: ${coords.latitude}, ${coords.longitude}`);
-                    } else {
-                        // Address not found — upload without coordinates
-                        $("#latitude").val("");
-                        $("#longitude").val("");
-                        $("#geo_source").val("");
-                        $("#geoStatus").show().text("Address not found — uploading without coordinates.");
-                    }
-                }
-            } else {
-                // Auto mode: EXIF first, then browser geolocation
-                const statusEl = $("#geoStatus");
-                if (exifCoords) {
-                    $("#latitude").val(exifCoords.latitude);
-                    $("#longitude").val(exifCoords.longitude);
-                    $("#geo_source").val("exif");
-                } else {
-                    statusEl.text("Requesting device location…");
-                    const bc = await getBrowserLocation();
-                    if (bc) {
-                        $("#latitude").val(bc.latitude);
-                        $("#longitude").val(bc.longitude);
-                        $("#geo_source").val("browser");
-                        statusEl.text(`📍 Using device location (${bc.latitude}, ${bc.longitude})`);
-                    } else {
-                        statusEl.text("Location unavailable — uploading without coordinates.");
-                    }
-                }
-            }
-
-            const labelInput = $("#location_label");
-            labelInput.val(sanitizeInput(labelInput.val()));
-            this.submit();
-        });
-    }
-
     // ── Gallery page ──────────────────────────────────────────────────────────
-    if (document.getElementById("searchForm")) {
+    if (document.getElementById("resultsGrid")) {
 
-        // Add tag from text input on Enter or comma
+        // Load initial feed
+        loadFeedPage();
+        initInfiniteScroll();
+
+        // Search: add tag on Enter or comma
         $("#tag_input").on("keydown", function (e) {
             if (e.key === "Enter") {
                 e.preventDefault();
@@ -451,7 +416,6 @@ $(function () {
             }
         });
 
-        // Search button / form submit
         $("#searchForm").on("submit", function (e) {
             e.preventDefault();
             const val = $("#tag_input").val().trim();
@@ -459,15 +423,124 @@ $(function () {
             else if (activeTags.length > 0) runSearch();
         });
 
-        // Detail modal: close on overlay click or close button
-        $("#detailOverlay").on("click", function (e) {
-            if (e.target === this) closeDetail();
-        });
+        // Detail modal
+        $("#detailOverlay").on("click", function (e) { if (e.target === this) closeDetail(); });
         $("#detailClose").on("click", closeDetail);
+        $(document).on("keydown", function (e) { if (e.key === "Escape") { closeDetail(); closeUploadModal(); } });
 
-        // Close modal on Escape key
-        $(document).on("keydown", function (e) {
-            if (e.key === "Escape") closeDetail();
+        // FAB + upload modal
+        $("#fabUpload").on("click", openUploadModal);
+        $("#uploadOverlay").on("click", function (e) { if (e.target === this) closeUploadModal(); });
+        $("#uploadPanelClose").on("click", closeUploadModal);
+
+        // Location mode toggle
+        $("input[name='location_mode']").on("change", function () {
+            if (this.value === "auto") {
+                $("#autoLocationSection").show();
+                $("#manualLocationSection").hide();
+            } else {
+                $("#autoLocationSection").hide();
+                $("#manualLocationSection").show();
+                $("#geoStatus").text("");
+            }
+        });
+
+        // EXIF read on file select
+        $("#imageInput").on("change", async function () {
+            const file = this.files[0];
+            if (!file) return;
+            if ($("#locModeAuto").is(":checked")) {
+                exifCoords = await extractExifGps(file);
+                $("#geoStatus").text(exifCoords
+                    ? `📍 GPS found in photo (${exifCoords.latitude}, ${exifCoords.longitude})`
+                    : "No GPS data in photo — will try device location on upload."
+                );
+            }
+        });
+
+        // Tag pill input
+        $("#tagPillBox").on("click", () => $("#tagTextInput").focus());
+        $("#tagTextInput").on("keydown", function (e) {
+            if (e.key === "Enter") { e.preventDefault(); addUploadTagFromInput(); }
+        }).on("input", function () {
+            if (this.value.includes(",")) addUploadTagFromInput();
+        });
+
+        // Upload form submit — POST via fetch so we can close the modal on success
+        $("#uploadForm").on("submit", async function (e) {
+            e.preventDefault();
+            addUploadTagFromInput();
+
+            if (uploadTags.length === 0) {
+                $("#uploadError").text("Please add at least one tag.").show();
+                return;
+            }
+            $("#uploadError").hide();
+
+            const mode = $("input[name='location_mode']:checked").val();
+
+            if (mode === "manual") {
+                const address = sanitizeInput($("#manual_address").val().trim());
+                if (address) {
+                    $("#geoStatus").show().text("Looking up address…");
+                    const coords = await geocodeAddress(address);
+                    if (coords) {
+                        $("#latitude").val(coords.latitude);
+                        $("#longitude").val(coords.longitude);
+                        $("#geo_source").val("address");
+                        $("#geoStatus").text(`📍 Found: ${coords.latitude}, ${coords.longitude}`);
+                    } else {
+                        $("#latitude").val("");
+                        $("#longitude").val("");
+                        $("#geo_source").val("");
+                        $("#geoStatus").show().text("Address not found — uploading without coordinates.");
+                    }
+                }
+            } else {
+                if (exifCoords) {
+                    $("#latitude").val(exifCoords.latitude);
+                    $("#longitude").val(exifCoords.longitude);
+                    $("#geo_source").val("exif");
+                } else {
+                    $("#geoStatus").text("Requesting device location…");
+                    const bc = await getBrowserLocation();
+                    if (bc) {
+                        $("#latitude").val(bc.latitude);
+                        $("#longitude").val(bc.longitude);
+                        $("#geo_source").val("browser");
+                        $("#geoStatus").text(`📍 Using device location (${bc.latitude}, ${bc.longitude})`);
+                    } else {
+                        $("#geoStatus").text("Location unavailable — uploading without coordinates.");
+                    }
+                }
+            }
+
+            // Sanitize location label
+            $("#location_label").val(sanitizeInput($("#location_label").val()));
+
+            // Submit via fetch — keeps us on the gallery page
+            const formData = new FormData(this);
+            try {
+                const res = await fetch("/upload", { method: "POST", body: formData });
+                const json = await res.json();
+
+                if (res.ok && json.ok) {
+                    closeUploadModal();
+                    // Prepend the new item to the feed by reloading page 1
+                    feedPage = 1;
+                    feedExhausted = false;
+                    $("#resultsGrid").empty();
+                    $("#searchStatus").text("");
+                    activeTags = [];
+                    renderActiveTags();
+                    await loadFeedPage();
+                } else {
+                    $("#uploadError").text(json.error || "Upload failed.").show();
+                }
+            } catch (err) {
+                console.error(err);
+                $("#uploadError").text("Network error — please try again.").show();
+            }
         });
     }
 });
