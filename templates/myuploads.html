@@ -15,11 +15,6 @@
         display: flex;
         flex-direction: column;
       }
-      .my-card img {
-        width: 100%; height: 180px; object-fit: cover;
-        border: none; box-shadow: none; border-radius: 0;
-      }
-      .my-card img:hover { transform: none; box-shadow: none; }
       .my-card-body { padding: 0.8rem; flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
       .my-card-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
       .my-card-tag {
@@ -127,6 +122,77 @@
 
       #myUploadsStatus { color: var(--light); font-weight: 700; padding: 0.5rem 0; }
       #myUploadsError  { color: var(--tertiary); font-weight: 800; margin-top: 0.5rem; }
+
+      /* ── Road warning badge (shared with gallery) ─────────────────────── */
+      .road-warning {
+        position: absolute; top: 0.45rem; left: 0.45rem;
+        padding: 0.2rem 0.55rem; border-radius: 999px;
+        font-size: 0.7rem; font-weight: 900; letter-spacing: 0.3px;
+        pointer-events: none;
+      }
+      .road-warning.yellow { background: #F5C518; color: #3a2e00; }
+      .road-warning.red    { background: #D32F2F; color: white; }
+      .road-warning.black  { background: #1a1a1a; color: white; }
+
+      /* ── Image wrapper so badge positions correctly ────────────────────── */
+      .my-card-img-wrap {
+        position: relative; cursor: pointer; overflow: hidden;
+      }
+      .my-card-img-wrap img {
+        width: 100%; height: 180px; object-fit: cover;
+        display: block; border: none; box-shadow: none; border-radius: 0;
+        transition: transform 0.2s ease;
+      }
+      .my-card-img-wrap:hover img { transform: scale(1.04); box-shadow: none; }
+
+      /* ── Detail modal (same as gallery) ───────────────────────────────── */
+      #myDetailOverlay {
+        display: none; position: fixed; inset: 0;
+        background: rgba(0,0,0,0.65); z-index: 900;
+        justify-content: center; align-items: center; padding: 1rem;
+      }
+      #myDetailOverlay.open { display: flex !important; }
+      #myDetailPanel {
+        background: white; border-radius: var(--radius-lg);
+        box-shadow: 0 30px 80px rgba(0,0,0,0.4);
+        max-width: 620px; width: 100%; max-height: 90vh;
+        overflow-y: auto; display: flex; flex-direction: column;
+      }
+      #myDetailPanel img {
+        width: 100%; max-height: 340px; object-fit: cover;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        border: none; box-shadow: none; cursor: default;
+      }
+      #myDetailPanel img:hover { opacity: 1; transform: none; box-shadow: none; }
+      #myDetailBody { padding: 1.4rem; }
+      .detail-row { margin-bottom: 1rem; }
+      .detail-label {
+        font-weight: 800; font-size: 0.85rem; color: var(--secondary_dark);
+        text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.35rem;
+      }
+      .detail-location-text { font-size: 0.95rem; color: var(--dark); }
+      .detail-location-link {
+        display: inline-flex; align-items: center; gap: 0.4rem;
+        color: var(--secondary_dark); font-weight: 700;
+        text-decoration: none; font-size: 0.95rem;
+      }
+      .detail-location-link:hover { color: var(--tertiary); text-decoration: underline; }
+      .detail-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+      .detail-tag-pill {
+        background: var(--primary); color: white;
+        padding: 0.25rem 0.7rem; border-radius: 999px;
+        font-size: 0.9rem; font-weight: 700;
+      }
+      #myDetailClose {
+        position: absolute; top: 0.75rem; right: 0.75rem;
+        background: rgba(0,0,0,0.45); color: white; border: none;
+        border-radius: 999px; width: 2rem; height: 2rem;
+        font-size: 1.1rem; font-weight: 900; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: none; padding: 0;
+      }
+      #myDetailClose:hover { background: var(--tertiary); transform: none; box-shadow: none; }
+      #myDetailPanelWrap { position: relative; }
     </style>
   </head>
   <body>
@@ -169,6 +235,39 @@
         <div class="delete-actions">
           <button id="deleteCancelBtn">Cancel</button>
           <button id="deleteConfirmBtn">Delete</button>
+        </div>
+      </div>
+    </div>
+    <!-- ── Detail modal ───────────────────────────────────────────────────── -->
+    <div id="myDetailOverlay" role="dialog" aria-modal="true" aria-label="Post details">
+      <div id="myDetailPanel">
+        <div id="myDetailPanelWrap">
+          <img id="myDetailImg" src="" alt="Selected photo">
+          <button id="myDetailClose" aria-label="Close">&times;</button>
+        </div>
+        <div id="myDetailBody">
+          <div class="detail-row" id="myDetailTagsRow">
+            <div class="detail-label">Tags</div>
+            <div class="detail-tags" id="myDetailTags"></div>
+          </div>
+          <div class="detail-row" id="myDetailLocationLabelRow">
+            <div class="detail-label">Location</div>
+            <div class="detail-location-text" id="myDetailLocationLabel"></div>
+          </div>
+          <div class="detail-row" id="myDetailCoordsRow">
+            <div class="detail-label">Coordinates</div>
+            <a id="myDetailCoordsLink" class="detail-location-link" href="#" target="_blank" rel="noopener">
+              📍 <span id="myDetailCoordsText"></span> — Get Directions
+            </a>
+          </div>
+          <div class="detail-row" id="myDetailRoadRow">
+            <div class="detail-label">Nearest Road</div>
+            <div class="detail-location-text" id="myDetailRoad"></div>
+          </div>
+          <div class="detail-row">
+            <div class="detail-label">Uploaded at</div>
+            <div class="detail-location-text" id="myDetailUploadedAt"></div>
+          </div>
         </div>
       </div>
     </div>

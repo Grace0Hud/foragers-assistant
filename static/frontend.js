@@ -342,13 +342,27 @@ async function loadMyUploads() {
 
         $("#myUploadsStatus").text(data.images.length === 0 ? "You haven't uploaded anything yet." : "");
 
+        // Keep a lookup map so the delegated click handler can find the full item by _id
+        window._myUploadsMap = {};
+
         data.images.forEach(item => {
+            window._myUploadsMap[item._id] = item;
+
             const tagPills = (item.tags || []).map(t => `<span class="my-card-tag">${t}</span>`).join("");
             const dateStr  = item.uploaded_at ? new Date(item.uploaded_at).toLocaleDateString() : "";
 
+            const warn      = item.nearest_road && item.nearest_road.road_warning;
+            const warnBadge = warn
+                ? `<span class="road-warning ${warn.level}">${warn.text}</span>`
+                : "";
+
             const card = $(`
                 <div class="my-card" data-id="${item._id}">
-                    <img src="/uploads/${encodeURIComponent(item.image)}" alt="${(item.tags||[]).join(', ')}">
+                    <div class="my-card-img-wrap" tabindex="0" role="button" aria-label="View details">
+                        <img src="/uploads/${encodeURIComponent(item.image)}"
+                             alt="${(item.tags||[]).join(', ')}">
+                        ${warnBadge}
+                    </div>
                     <div class="my-card-body">
                         <div class="my-card-tags">${tagPills}</div>
                         <div class="my-card-date">${dateStr}</div>
@@ -360,8 +374,8 @@ async function loadMyUploads() {
                 </div>
             `);
 
-            card.find(".btn-edit").on("click", () => openEditModal(item._id, item.tags || []));
-            card.find(".btn-delete").on("click", () => openDeleteConfirm(item._id));
+            card.find(".btn-edit").on("click", (e) => { e.stopPropagation(); openEditModal(item._id, item.tags || []); });
+            card.find(".btn-delete").on("click", (e) => { e.stopPropagation(); openDeleteConfirm(item._id); });
 
             $("#myUploadsGrid").append(card);
         });
@@ -369,6 +383,70 @@ async function loadMyUploads() {
         console.error(err);
         $("#myUploadsStatus").text("Failed to load uploads.");
     }
+}
+
+function openMyDetail(item) {
+    const overlay = document.getElementById("myDetailOverlay");
+    if (!overlay) { console.error("myDetailOverlay not found in DOM"); return; }
+
+    $("#myDetailImg")
+        .attr("src", `/uploads/${encodeURIComponent(item.image)}`)
+        .attr("alt", (item.tags || []).join(", "));
+
+    // Tags (display only — no search action on this page)
+    const tagsEl = $("#myDetailTags").empty();
+    (item.tags || []).forEach(tag => {
+        tagsEl.append(`<span class="detail-tag-pill">${tag}</span>`);
+    });
+
+    // Location label + manual address
+    const locationText = [item.manual_address, item.location_label].filter(Boolean).join(" — ");
+    if (locationText) {
+        $("#myDetailLocationLabel").text(locationText);
+        $("#myDetailLocationLabelRow").show();
+    } else {
+        $("#myDetailLocationLabelRow").hide();
+    }
+
+    // Coordinates with Google Maps link
+    const geo = item.location_geo;
+    if (geo && geo.latitude != null && geo.longitude != null) {
+        $("#myDetailCoordsLink").attr("href",
+            `https://www.google.com/maps/dir/?api=1&destination=${geo.latitude},${geo.longitude}`);
+        $("#myDetailCoordsText").text(`${geo.latitude}, ${geo.longitude}`);
+        $("#myDetailCoordsRow").show();
+    } else {
+        $("#myDetailCoordsRow").hide();
+    }
+
+    // Nearest road
+    const road = item.nearest_road;
+    if (road) {
+        let roadText = road.type_label || road.type;
+        if (road.name && road.name !== road.type_label) roadText += ` — ${road.name}`;
+        if (road.distance_metres != null) {
+            roadText += ` (${road.distance_metres < 1000
+                ? road.distance_metres + " m away"
+                : (road.distance_metres / 1000).toFixed(2) + " km away"})`;
+        }
+        $("#myDetailRoad").text(roadText);
+        $("#myDetailRoadRow").show();
+    } else {
+        $("#myDetailRoadRow").hide();
+    }
+
+    // Timestamp
+    $("#myDetailUploadedAt").text(
+        item.uploaded_at ? new Date(item.uploaded_at).toLocaleString() : "Unknown"
+    );
+
+    $("#myDetailOverlay").addClass("open");
+    document.body.style.overflow = "hidden";
+}
+
+function closeMyDetail() {
+    $("#myDetailOverlay").removeClass("open");
+    document.body.style.overflow = "";
 }
 
 function openEditModal(docId, currentTags) {
@@ -397,7 +475,7 @@ $(function () {
     // Escape key closes any open modal
     $(document).on("keydown", function (e) {
         if (e.key !== "Escape") return;
-        closeDetail(); closeUploadModal(); closeEditModal(); closeDeleteConfirm();
+        closeDetail(); closeUploadModal(); closeEditModal(); closeDeleteConfirm(); closeMyDetail();
     });
 
     // ── Gallery page ──────────────────────────────────────────────────────────
@@ -496,6 +574,14 @@ $(function () {
 
         loadMyUploads();
 
+        // Delegated click — uses _myUploadsMap populated by loadMyUploads
+        $("#myUploadsGrid").on("click keydown", ".my-card-img-wrap", function (e) {
+            if (e.type === "keydown" && e.key !== "Enter") return;
+            const id   = $(this).closest(".my-card").attr("data-id");
+            const item = window._myUploadsMap && window._myUploadsMap[id];
+            if (item) openMyDetail(item);
+        });
+
         // Edit tag pill input
         $("#editTagPillBox").on("click", ()=>$("#editTagTextInput").focus());
         $("#editTagTextInput").on("keydown", function(e){if(e.key==="Enter"){e.preventDefault();editPills.addFromInput();}})
@@ -530,6 +616,10 @@ $(function () {
         // Edit modal close
         $("#editOverlay").on("click", function(e){if(e.target===this)closeEditModal();});
         $("#editPanelClose").on("click", closeEditModal);
+
+        // Detail modal close
+        $("#myDetailOverlay").on("click", function(e){if(e.target===this)closeMyDetail();});
+        $("#myDetailClose").on("click", closeMyDetail);
 
         // Delete confirm
         $("#deleteCancelBtn").on("click", closeDeleteConfirm);
