@@ -42,20 +42,18 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_PORT || 22 }}
-
-          # Add these:
+          port: 22
           debug: true
           timeout: 60s
           command_timeout: 30m
-
           script_stop: true
           script: |
             set -euo pipefail
-            cd ${{ secrets.APP_PATH }}
+            APP_DIR="$HOME/foragers-assistant"
+            cd "$APP_DIR"
             git fetch --all
             git reset --hard origin/main
-            if [ ! -d '.venv' ]; then
+            if [ ! -d ".venv" ]; then
               python3 -m venv .venv
             fi
             .venv/bin/pip install --upgrade pip --quiet
