@@ -12,6 +12,7 @@ import bleach
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from datetime import datetime, timezone
+import requests
 
 # Loading environment variables.
 load_dotenv()
@@ -184,6 +185,182 @@ def serialize_doc(doc: dict) -> dict:
     return doc
 
 
+# ── Road proximity lookup ─────────────────────────────────────────────────────
+
+# Human-readable labels for OSM highway tag values
+HIGHWAY_LABELS = {
+    "motorway":       "motorway",
+    "trunk":          "major road",
+    "primary":        "primary road",
+    "secondary":      "secondary road",
+    "tertiary":       "minor road",
+    "unclassified":   "unclassified road",
+    "residential":    "residential road",
+    "service":        "service road",
+    "living_street":  "living street",
+    "pedestrian":     "pedestrian street",
+    "track":          "unpaved track",
+    "path":           "path",
+    "footway":        "footpath",
+    "bridleway":      "bridleway",
+    "cycleway":       "cycleway",
+    "steps":          "steps",
+    "motorway_link":  "motorway slip road",
+    "trunk_link":     "major road slip road",
+    "primary_link":   "primary road slip road",
+    "secondary_link": "secondary road slip road",
+    "tertiary_link":  "minor road slip road",
+}
+
+HEADERS = {
+    "User-Agent": "ForagersAssistant/1.0",
+    "Accept-Language": "en",
+}
+
+
+def haversine_metres(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return the great-circle distance in metres between two lat/lon points."""
+    import math
+    R = 6_371_000  # Earth radius in metres
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi  = math.radians(lat2 - lat1)
+    dlam  = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def nearest_road_nominatim(lat: float, lon: float) -> dict | None:
+    """
+    Fast first pass: reverse-geocode the coordinates with Nominatim.
+    Returns the road name and OSM highway type if present.
+    Does NOT return a distance — that comes from Overpass.
+    """
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"lat": lat, "lon": lon, "format": "json"},
+            headers=HEADERS,
+            timeout=5,
+        )
+        data = resp.json()
+        addr = data.get("address", {})
+        road_name = (
+            addr.get("road")
+            or addr.get("pedestrian")
+            or addr.get("footway")
+            or addr.get("path")
+            or addr.get("cycleway")
+        )
+        # Nominatim doesn't reliably expose the highway type in reverse geocoding,
+        # so we return only the name here; type + distance come from Overpass.
+        return {"name": road_name} if road_name else None
+    except Exception as e:
+        print(f"Nominatim error: {e}")
+        return None
+
+
+def nearest_road_overpass(lat: float, lon: float, radius: int = 100) -> dict | None:
+    """
+    Precise pass: query Overpass for all highway ways within `radius` metres.
+    Returns the closest one with its name, OSM highway type, and approximate
+    distance calculated from the way's node coordinates.
+    Falls back to a larger radius (500 m) if nothing is found in the initial one.
+    """
+    def run_query(search_radius: int) -> dict | None:
+        query = f"""
+        [out:json][timeout:10];
+        way(around:{search_radius},{lat},{lon})[highway];
+        out body;
+        >;
+        out skel qt;
+        """
+        try:
+            resp = requests.post(
+                "https://overpass-api.de/api/interpreter",
+                data={"data": query},
+                headers=HEADERS,
+                timeout=15,
+            )
+            data = resp.json()
+        except Exception as e:
+            print(f"Overpass error: {e}")
+            return None
+
+        elements = data.get("elements", [])
+
+        # Collect node coordinates from the response
+        nodes = {
+            el["id"]: (el["lat"], el["lon"])
+            for el in elements if el["type"] == "node"
+        }
+
+        best = None
+        best_dist = float("inf")
+
+        for el in elements:
+            if el["type"] != "way":
+                continue
+            highway_type = el.get("tags", {}).get("highway", "")
+            if not highway_type:
+                continue
+
+            road_name = (
+                el.get("tags", {}).get("name")
+                or el.get("tags", {}).get("ref")
+                or HIGHWAY_LABELS.get(highway_type, highway_type)
+            )
+
+            # Find the closest node on this way to the photo coordinates
+            for node_id in el.get("nodes", []):
+                if node_id not in nodes:
+                    continue
+                node_lat, node_lon = nodes[node_id]
+                dist = haversine_metres(lat, lon, node_lat, node_lon)
+                if dist < best_dist:
+                    best_dist = dist
+                    best = {
+                        "name":             road_name,
+                        "type":             highway_type,
+                        "type_label":       HIGHWAY_LABELS.get(highway_type, highway_type),
+                        "distance_metres":  round(best_dist, 1),
+                    }
+
+        return best
+
+    result = run_query(radius)
+    if result is None:
+        result = run_query(500)  # widen search if nothing found nearby
+    return result
+
+
+def lookup_nearest_road(lat: float, lon: float) -> dict | None:
+    """
+    Combine Overpass (precise) with Nominatim (road name fallback).
+    Overpass is tried first; if it returns a result without a proper name,
+    Nominatim fills it in.
+    """
+    overpass_result = nearest_road_overpass(lat, lon)
+    nominatim_result = nearest_road_nominatim(lat, lon)
+
+    if overpass_result:
+        # If Overpass found a way but its name is just the type label,
+        # see if Nominatim has a more descriptive road name
+        if nominatim_result and nominatim_result.get("name"):
+            type_label = overpass_result.get("type_label", "")
+            if overpass_result["name"] == type_label:
+                overpass_result["name"] = nominatim_result["name"]
+        return overpass_result
+
+    # Overpass found nothing — return Nominatim's result without a distance
+    if nominatim_result:
+        nominatim_result["type"]             = "unknown"
+        nominatim_result["type_label"]       = "road"
+        nominatim_result["distance_metres"]  = None
+        return nominatim_result
+
+    return None
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -214,6 +391,7 @@ def api_my_uploads():
         "location_label": 1,
         "manual_address": 1,
         "location_geo":   1,
+        "nearest_road":   1,
         "uploaded_at":    1,
     }
     docs = [
@@ -292,6 +470,7 @@ def api_feed():
         "location_label": 1,
         "manual_address": 1,
         "location_geo":   1,
+        "nearest_road":   1,
         "uploaded_at":    1,
     }
 
@@ -335,6 +514,7 @@ def api_search():
         "location_label": 1,
         "manual_address": 1,
         "location_geo":   1,
+        "nearest_road":   1,
         "uploaded_at":    1,
     }
     docs = [
@@ -468,12 +648,24 @@ def upload_image():
             except ValueError:
                 location_data = None
 
+    # Look up nearest road if we have coordinates
+    nearest_road = None
+    if location_data and location_data.get("latitude") is not None:
+        try:
+            nearest_road = lookup_nearest_road(
+                float(location_data["latitude"]),
+                float(location_data["longitude"])
+            )
+        except Exception as e:
+            print(f"Road lookup failed: {e}")
+
     data = {
         "image":          filename,
         "tags":           tag_list,
         "location_label": location_label,
         "manual_address": manual_address,
         "location_geo":   location_data,
+        "nearest_road":   nearest_road,   # {"name", "type", "type_label", "distance_metres"}
         "uploaded_by":    session["username"],
         "uploaded_at":    datetime.now(timezone.utc)
     }

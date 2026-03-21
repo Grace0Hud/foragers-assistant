@@ -209,6 +209,19 @@ function openDetail(item) {
         $("#detailCoordsRow").show();
     } else { $("#detailCoordsRow").hide(); }
 
+    const road = item.nearest_road;
+    if (road) {
+        let roadText = `${road.type_label || road.type}`;
+        if (road.name && road.name !== road.type_label) roadText += ` — ${road.name}`;
+        if (road.distance_metres != null) {
+            roadText += ` (${road.distance_metres < 1000
+                ? road.distance_metres + " m away"
+                : (road.distance_metres / 1000).toFixed(2) + " km away"})`;
+        }
+        $("#detailRoad").text(roadText);
+        $("#detailRoadRow").show();
+    } else { $("#detailRoadRow").hide(); }
+
     if (item.uploaded_at) $("#detailUploadedAt").text(new Date(item.uploaded_at).toLocaleString());
     else $("#detailUploadedAt").text("Unknown");
 
