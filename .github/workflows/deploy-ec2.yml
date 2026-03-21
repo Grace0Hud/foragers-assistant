@@ -52,19 +52,13 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            set -x            
-            APP_DIR="$HOME/foragers-assistant"
-            APP_FILE="backend.py"
-            PY="$APP_DIR/.venv/bin/python"
-            cd "$APP_DIR"
+            cd ${{ secrets.APP_PATH }}
             git fetch --all
             git reset --hard origin/main
-            if [ ! -d ".venv" ]; then
+            if [ ! -d '.venv' ]; then
               python3 -m venv .venv
             fi
-            $APP_DIR/.venv/bin/pip install --upgrade pip --quiet
-            $APP_DIR/.venv/bin/pip install -r requirements.txt --quiet
-            pkill -f "$PY $APP_FILE" || true
-            nohup "$PY" "$APP_FILE" > log.txt 2>&1 &
-            echo "Started. Tail logs with: tail -n 200 -f $APP_DIR/log.txt"
+            .venv/bin/pip install --upgrade pip --quiet
+            .venv/bin/pip install -r requirements.txt --quiet
+            sudo systemctl restart forager
             exit 0
