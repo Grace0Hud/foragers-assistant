@@ -5,195 +5,6 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script defer src="{{ url_for('static', filename='frontend.js') }}"></script>
-    <style>
-      /* ── Upload card ──────────────────────────────────────────────────── */
-      .my-card {
-        background: white;
-        border-radius: var(--radius-md);
-        box-shadow: var(--shadow-soft);
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-      }
-      .my-card-body { padding: 0.8rem; flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
-      .my-card-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-      .my-card-tag {
-        background: var(--primary); color: white;
-        font-size: 0.75rem; font-weight: 800;
-        padding: 0.15rem 0.5rem; border-radius: 999px;
-      }
-      .my-card-date { font-size: 0.8rem; color: #888; margin-top: auto; }
-      .my-card-actions { display: flex; gap: 0.5rem; padding: 0 0.8rem 0.8rem; }
-      .btn-edit, .btn-delete {
-        flex: 1; padding: 0.5rem; border: none; border-radius: var(--radius-md);
-        font-weight: 800; font-size: 0.85rem; cursor: pointer;
-        transition: transform 0.1s ease, box-shadow 0.15s ease;
-      }
-      .btn-edit {
-        background: var(--secondary_dark); color: white;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      }
-      .btn-edit:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.2); }
-      .btn-delete {
-        background: var(--tertiary); color: white;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      }
-      .btn-delete:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.2); }
-
-      /* ── Edit tags modal ──────────────────────────────────────────────── */
-      #editOverlay {
-        display: none; position: fixed; inset: 0;
-        background: rgba(0,0,0,0.65); z-index: 700;
-        justify-content: center; align-items: center; padding: 1rem;
-      }
-      #editOverlay.open { display: flex; }
-      #editPanel {
-        background: white; border-radius: var(--radius-lg);
-        box-shadow: 0 30px 80px rgba(0,0,0,0.4);
-        max-width: 500px; width: 100%; padding: 2rem; position: relative;
-      }
-      #editPanel h2 { margin: 0 0 1.2rem; color: var(--dark); font-size: 1.2rem; }
-      #editPanel form { box-shadow: none; padding: 0; border-radius: 0; margin: 0; }
-      #editPanelClose {
-        position: absolute; top: 1rem; right: 1rem;
-        background: rgba(0,0,0,0.1); color: var(--dark); border: none;
-        border-radius: 999px; width: 2rem; height: 2rem;
-        font-size: 1.1rem; font-weight: 900; cursor: pointer;
-        display: flex; align-items: center; justify-content: center;
-        box-shadow: none; padding: 0;
-      }
-      #editPanelClose:hover { background: var(--tertiary); color: white; transform: none; box-shadow: none; }
-
-      /* Tag pill styles */
-      .tag-input-wrapper {
-        display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
-        padding: 0.6rem; border: 2px solid var(--primary);
-        border-radius: var(--radius-md); background: white;
-        margin-bottom: 1.2rem; cursor: text;
-      }
-      .tag-input-wrapper:focus-within {
-        border-color: var(--secondary_dark);
-        box-shadow: 0 0 0 4px rgba(125,122,188,0.25);
-      }
-      .tag-pill {
-        display: inline-flex; align-items: center; gap: 0.3rem;
-        background: var(--primary); color: white;
-        padding: 0.25rem 0.65rem; border-radius: 999px;
-        font-size: 0.9rem; font-weight: 700;
-      }
-      .tag-pill button {
-        background: none; border: none; color: white; cursor: pointer;
-        font-size: 1rem; line-height: 1; padding: 0; width: auto;
-        box-shadow: none; font-weight: 900;
-      }
-      .tag-pill button:hover { transform: none; box-shadow: none; color: var(--light); }
-      #editTagTextInput {
-        border: none; outline: none; font-size: 1rem;
-        flex: 1; min-width: 120px; padding: 0.2rem; margin-bottom: 0;
-      }
-
-      /* ── Delete confirm modal ─────────────────────────────────────────── */
-      #deleteOverlay {
-        display: none; position: fixed; inset: 0;
-        background: rgba(0,0,0,0.65); z-index: 800;
-        justify-content: center; align-items: center; padding: 1rem;
-      }
-      #deleteOverlay.open { display: flex; }
-      #deletePanel {
-        background: white; border-radius: var(--radius-lg);
-        box-shadow: 0 30px 80px rgba(0,0,0,0.4);
-        max-width: 420px; width: 100%; padding: 2rem; text-align: center;
-      }
-      #deletePanel p { color: var(--dark); margin-bottom: 1.5rem; font-size: 1rem; }
-      .delete-actions { display: flex; gap: 1rem; justify-content: center; }
-      #deleteCancelBtn {
-        flex: 1; padding: 0.8rem; border-radius: var(--radius-md);
-        background: #eee; border: none; font-weight: 800;
-        cursor: pointer; font-size: 0.95rem;
-      }
-      #deleteCancelBtn:hover { background: #ddd; transform: none; box-shadow: none; }
-      #deleteConfirmBtn {
-        flex: 1; padding: 0.8rem; border-radius: var(--radius-md);
-        background: var(--tertiary); color: white; border: none;
-        font-weight: 800; cursor: pointer; font-size: 0.95rem;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      }
-      #deleteConfirmBtn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.25); }
-
-      #myUploadsStatus { color: var(--light); font-weight: 700; padding: 0.5rem 0; }
-      #myUploadsError  { color: var(--tertiary); font-weight: 800; margin-top: 0.5rem; }
-
-      /* ── Road warning badge (shared with gallery) ─────────────────────── */
-      .road-warning {
-        position: absolute; top: 0.45rem; left: 0.45rem;
-        padding: 0.2rem 0.55rem; border-radius: 999px;
-        font-size: 0.7rem; font-weight: 900; letter-spacing: 0.3px;
-        pointer-events: none;
-      }
-      .road-warning.yellow { background: #F5C518; color: #3a2e00; }
-      .road-warning.red    { background: #D32F2F; color: white; }
-      .road-warning.black  { background: #1a1a1a; color: white; }
-
-      /* ── Image wrapper so badge positions correctly ────────────────────── */
-      .my-card-img-wrap {
-        position: relative; cursor: pointer; overflow: hidden;
-      }
-      .my-card-img-wrap img {
-        width: 100%; height: 180px; object-fit: cover;
-        display: block; border: none; box-shadow: none; border-radius: 0;
-        transition: transform 0.2s ease;
-      }
-      .my-card-img-wrap:hover img { transform: scale(1.04); box-shadow: none; }
-
-      /* ── Detail modal (same as gallery) ───────────────────────────────── */
-      #myDetailOverlay {
-        display: none; position: fixed; inset: 0;
-        background: rgba(0,0,0,0.65); z-index: 900;
-        justify-content: center; align-items: center; padding: 1rem;
-      }
-      #myDetailOverlay.open { display: flex !important; }
-      #myDetailPanel {
-        background: white; border-radius: var(--radius-lg);
-        box-shadow: 0 30px 80px rgba(0,0,0,0.4);
-        max-width: 620px; width: 100%; max-height: 90vh;
-        overflow-y: auto; display: flex; flex-direction: column;
-      }
-      #myDetailPanel img {
-        width: 100%; max-height: 340px; object-fit: cover;
-        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-        border: none; box-shadow: none; cursor: default;
-      }
-      #myDetailPanel img:hover { opacity: 1; transform: none; box-shadow: none; }
-      #myDetailBody { padding: 1.4rem; }
-      .detail-row { margin-bottom: 1rem; }
-      .detail-label {
-        font-weight: 800; font-size: 0.85rem; color: var(--secondary_dark);
-        text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.35rem;
-      }
-      .detail-location-text { font-size: 0.95rem; color: var(--dark); }
-      .detail-location-link {
-        display: inline-flex; align-items: center; gap: 0.4rem;
-        color: var(--secondary_dark); font-weight: 700;
-        text-decoration: none; font-size: 0.95rem;
-      }
-      .detail-location-link:hover { color: var(--tertiary); text-decoration: underline; }
-      .detail-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-      .detail-tag-pill {
-        background: var(--primary); color: white;
-        padding: 0.25rem 0.7rem; border-radius: 999px;
-        font-size: 0.9rem; font-weight: 700;
-      }
-      #myDetailClose {
-        position: absolute; top: 0.75rem; right: 0.75rem;
-        background: rgba(0,0,0,0.45); color: white; border: none;
-        border-radius: 999px; width: 2rem; height: 2rem;
-        font-size: 1.1rem; font-weight: 900; cursor: pointer;
-        display: flex; align-items: center; justify-content: center;
-        box-shadow: none; padding: 0;
-      }
-      #myDetailClose:hover { background: var(--tertiary); transform: none; box-shadow: none; }
-      #myDetailPanelWrap { position: relative; }
-    </style>
   </head>
   <body>
     <h1>Forager's Assistant</h1>
@@ -218,9 +29,7 @@
           <div class="tag-input-wrapper" id="editTagPillBox">
             <input type="text" id="editTagTextInput" placeholder="Type a tag and press Enter or comma…">
           </div>
-          <p style="font-size:0.85rem; color:#7D7ABC; margin-top:-1rem; margin-bottom:1.2rem;">
-            Letters and spaces only. Press Enter or comma to add each one.
-          </p>
+          <p class="tag-hint">Letters and spaces only. Press Enter or comma to add each one.</p>
           <input type="hidden" id="editTagsHidden">
           <div id="editError" class="error-message" style="display:none;"></div>
           <button type="submit">Save Tags</button>
@@ -238,6 +47,7 @@
         </div>
       </div>
     </div>
+
     <!-- ── Detail modal ───────────────────────────────────────────────────── -->
     <div id="myDetailOverlay" role="dialog" aria-modal="true" aria-label="Post details">
       <div id="myDetailPanel">
