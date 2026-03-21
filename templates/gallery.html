@@ -68,6 +68,19 @@
         padding: 0.1rem 0.45rem; border-radius: 999px;
       }
 
+      /* ── Road warning badge ───────────────────────────────────────────── */
+      .road-warning {
+        position: absolute; top: 0.45rem; left: 0.45rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.7rem; font-weight: 900;
+        letter-spacing: 0.3px;
+        pointer-events: none;
+      }
+      .road-warning.yellow { background: #F5C518; color: #3a2e00; }
+      .road-warning.red    { background: #D32F2F; color: white; }
+      .road-warning.black  { background: #1a1a1a; color: white; }
+
       /* ── Infinite scroll ──────────────────────────────────────────────── */
       #feedSentinel { height: 1px; }
       #feedLoader { text-align: center; color: var(--light); padding: 1rem; font-weight: 700; }

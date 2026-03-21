@@ -212,6 +212,15 @@ HIGHWAY_LABELS = {
     "tertiary_link":  "minor road slip road",
 }
 
+# Road types considered for proximity warnings — non-road paths are excluded
+MAJOR_ROAD_TYPES = {"motorway", "trunk", "primary", "secondary",
+                    "motorway_link", "trunk_link", "primary_link", "secondary_link"}
+MINOR_ROAD_TYPES = {"tertiary", "residential", "unclassified", "living_street", "pedestrian",
+                    "tertiary_link"}
+
+# Types ignored entirely when finding the nearest relevant road
+EXCLUDED_TYPES = {"service", "footway", "path", "track", "bridleway", "cycleway", "steps"}
+
 HEADERS = {
     "User-Agent": "ForagersAssistant/1.0",
     "Accept-Language": "en",
@@ -221,7 +230,7 @@ HEADERS = {
 def haversine_metres(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Return the great-circle distance in metres between two lat/lon points."""
     import math
-    R = 6_371_000  # Earth radius in metres
+    R = 6_371_000
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi  = math.radians(lat2 - lat1)
     dlam  = math.radians(lon2 - lon1)
@@ -229,11 +238,48 @@ def haversine_metres(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+def compute_road_warning(highway_type: str, distance_metres: float) -> dict | None:
+    """
+    Return a warning dict {"level": "yellow"|"red"|"black", "text": str}
+    based on road type and distance, or None if no warning applies.
+
+    Major roads (motorway, trunk, primary, secondary):
+      < 60 m  → yellow "near major road"
+      < 30 m  → red    "near major road"
+      < 15 m  → black  "near major road"
+
+    Minor roads (tertiary, residential, unclassified, living_street, pedestrian):
+      < 30 m  → yellow "near minor road"
+      < 15 m  → red    "near minor road"
+      <  5 m  → black  "near minor road"
+    """
+    if distance_metres is None:
+        return None
+
+    if highway_type in MAJOR_ROAD_TYPES:
+        if distance_metres < 15:
+            return {"level": "black", "text": "near major road"}
+        if distance_metres < 30:
+            return {"level": "red",   "text": "near major road"}
+        if distance_metres < 60:
+            return {"level": "yellow","text": "near major road"}
+
+    elif highway_type in MINOR_ROAD_TYPES:
+        if distance_metres < 5:
+            return {"level": "black", "text": "near minor road"}
+        if distance_metres < 15:
+            return {"level": "red",   "text": "near minor road"}
+        if distance_metres < 30:
+            return {"level": "yellow","text": "near minor road"}
+
+    return None
+
+
 def nearest_road_nominatim(lat: float, lon: float) -> dict | None:
     """
     Fast first pass: reverse-geocode the coordinates with Nominatim.
-    Returns the road name and OSM highway type if present.
-    Does NOT return a distance — that comes from Overpass.
+    Returns the road name only — type and distance come from Overpass.
+    Only returns names for road types we care about (excludes paths/tracks).
     """
     try:
         resp = requests.get(
@@ -244,15 +290,8 @@ def nearest_road_nominatim(lat: float, lon: float) -> dict | None:
         )
         data = resp.json()
         addr = data.get("address", {})
-        road_name = (
-            addr.get("road")
-            or addr.get("pedestrian")
-            or addr.get("footway")
-            or addr.get("path")
-            or addr.get("cycleway")
-        )
-        # Nominatim doesn't reliably expose the highway type in reverse geocoding,
-        # so we return only the name here; type + distance come from Overpass.
+        # Only use road names — not footways/paths which Nominatim can also return
+        road_name = addr.get("road")
         return {"name": road_name} if road_name else None
     except Exception as e:
         print(f"Nominatim error: {e}")
@@ -261,11 +300,16 @@ def nearest_road_nominatim(lat: float, lon: float) -> dict | None:
 
 def nearest_road_overpass(lat: float, lon: float, radius: int = 100) -> dict | None:
     """
-    Precise pass: query Overpass for all highway ways within `radius` metres.
-    Returns the closest one with its name, OSM highway type, and approximate
-    distance calculated from the way's node coordinates.
-    Falls back to a larger radius (500 m) if nothing is found in the initial one.
+    Query Overpass for highway ways within radius metres, excluding non-road
+    types (service, footway, path, track, bridleway, cycleway, steps).
+    Returns the road with the highest danger level (black > red > yellow > none)
+    rather than simply the closest one. If multiple roads share the same danger
+    level, the closest among them is returned.
+    Falls back to 500 m radius if nothing found at the initial radius.
     """
+    # Numeric score for each warning level — higher is more dangerous
+    WARNING_SCORE = {"black": 3, "red": 2, "yellow": 1, None: 0}
+
     def run_query(search_radius: int) -> dict | None:
         query = f"""
         [out:json][timeout:10];
@@ -288,20 +332,22 @@ def nearest_road_overpass(lat: float, lon: float, radius: int = 100) -> dict | N
 
         elements = data.get("elements", [])
 
-        # Collect node coordinates from the response
         nodes = {
             el["id"]: (el["lat"], el["lon"])
             for el in elements if el["type"] == "node"
         }
 
-        best = None
-        best_dist = float("inf")
+        # For each road way, find the distance to its closest node, then score it.
+        # Keep the candidate with the highest danger score; break ties by distance.
+        best            = None
+        best_score      = -1
+        best_dist       = float("inf")
 
         for el in elements:
             if el["type"] != "way":
                 continue
             highway_type = el.get("tags", {}).get("highway", "")
-            if not highway_type:
+            if not highway_type or highway_type in EXCLUDED_TYPES:
                 continue
 
             road_name = (
@@ -310,52 +356,66 @@ def nearest_road_overpass(lat: float, lon: float, radius: int = 100) -> dict | N
                 or HIGHWAY_LABELS.get(highway_type, highway_type)
             )
 
-            # Find the closest node on this way to the photo coordinates
+            # Find this way's closest node distance
+            way_dist = float("inf")
             for node_id in el.get("nodes", []):
                 if node_id not in nodes:
                     continue
                 node_lat, node_lon = nodes[node_id]
-                dist = haversine_metres(lat, lon, node_lat, node_lon)
-                if dist < best_dist:
-                    best_dist = dist
-                    best = {
-                        "name":             road_name,
-                        "type":             highway_type,
-                        "type_label":       HIGHWAY_LABELS.get(highway_type, highway_type),
-                        "distance_metres":  round(best_dist, 1),
-                    }
+                d = haversine_metres(lat, lon, node_lat, node_lon)
+                if d < way_dist:
+                    way_dist = d
+
+            if way_dist == float("inf"):
+                continue
+
+            warning = compute_road_warning(highway_type, way_dist)
+            score   = WARNING_SCORE.get(warning["level"] if warning else None, 0)
+
+            # Prefer higher score; on equal score prefer the closer road
+            if score > best_score or (score == best_score and way_dist < best_dist):
+                best_score = score
+                best_dist  = way_dist
+                best = {
+                    "name":            road_name,
+                    "type":            highway_type,
+                    "type_label":      HIGHWAY_LABELS.get(highway_type, highway_type),
+                    "distance_metres": round(way_dist, 1),
+                }
 
         return best
 
     result = run_query(radius)
     if result is None:
-        result = run_query(500)  # widen search if nothing found nearby
+        result = run_query(500)
     return result
 
 
 def lookup_nearest_road(lat: float, lon: float) -> dict | None:
     """
-    Combine Overpass (precise) with Nominatim (road name fallback).
-    Overpass is tried first; if it returns a result without a proper name,
-    Nominatim fills it in.
+    Combine Overpass (precise distance + type) with Nominatim (road name fallback).
+    Attaches a road_warning based on type and distance before returning.
     """
-    overpass_result = nearest_road_overpass(lat, lon)
+    overpass_result  = nearest_road_overpass(lat, lon)
     nominatim_result = nearest_road_nominatim(lat, lon)
 
     if overpass_result:
-        # If Overpass found a way but its name is just the type label,
-        # see if Nominatim has a more descriptive road name
+        # Fill in a better name from Nominatim if Overpass only has the type label
         if nominatim_result and nominatim_result.get("name"):
-            type_label = overpass_result.get("type_label", "")
-            if overpass_result["name"] == type_label:
+            if overpass_result["name"] == overpass_result.get("type_label", ""):
                 overpass_result["name"] = nominatim_result["name"]
+
+        overpass_result["road_warning"] = compute_road_warning(
+            overpass_result["type"],
+            overpass_result["distance_metres"]
+        )
         return overpass_result
 
-    # Overpass found nothing — return Nominatim's result without a distance
     if nominatim_result:
-        nominatim_result["type"]             = "unknown"
-        nominatim_result["type_label"]       = "road"
-        nominatim_result["distance_metres"]  = None
+        nominatim_result["type"]          = "unknown"
+        nominatim_result["type_label"]    = "road"
+        nominatim_result["distance_metres"] = None
+        nominatim_result["road_warning"]  = None
         return nominatim_result
 
     return None

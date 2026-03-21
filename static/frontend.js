@@ -158,9 +158,17 @@ function appendCards(items, gridSelector) {
     const grid = $(gridSelector);
     items.forEach(item => {
         const tagPills = (item.tags || []).slice(0, 3).map(t => `<span class="card-tag">${t}</span>`).join("");
+
+        // Road warning badge
+        const warn = item.nearest_road && item.nearest_road.road_warning;
+        const warnBadge = warn
+            ? `<span class="road-warning ${warn.level}">${warn.text}</span>`
+            : "";
+
         const card = $(`
             <div class="grid-card" tabindex="0" role="button" aria-label="View details">
                 <img src="/uploads/${encodeURIComponent(item.image)}" alt="Tagged ${(item.tags || []).join(', ')}">
+                ${warnBadge}
                 <div class="card-tag-strip">${tagPills}</div>
             </div>
         `);
