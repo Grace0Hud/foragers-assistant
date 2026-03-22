@@ -478,40 +478,18 @@ $(function () {
         closeDetail(); closeUploadModal(); closeEditModal(); closeDeleteConfirm(); closeMyDetail();
     });
 
-    // ── Gallery page ──────────────────────────────────────────────────────────
-    if (document.getElementById("resultsGrid")) {
+    // ── Upload modal — runs on every authenticated page ───────────────────────
+    if (document.getElementById("uploadOverlay")) {
 
-        loadFeedPage();
-        initInfiniteScroll();
-
-        // Search tag input
-        $("#tag_input").on("keydown", function (e) {
-            if (e.key === "Enter") { e.preventDefault(); const v=$(this).val().trim(); if(v){addSearchTag(v);$(this).val("");} }
-        }).on("input", function () { if(this.value.includes(",")){addSearchTag(this.value);$(this).val("");} });
-
-        $("#searchForm").on("submit", function (e) {
-            e.preventDefault();
-            const v = $("#tag_input").val().trim();
-            if (v) { addSearchTag(v); $("#tag_input").val(""); }
-            else if (activeTags.length > 0) runSearch();
-        });
-
-        // Detail modal
-        $("#detailOverlay").on("click", function(e){if(e.target===this)closeDetail();});
-        $("#detailClose").on("click", closeDetail);
-
-        // Upload modal
         $("#navUploadBtn").on("click", openUploadModal);
         $("#uploadOverlay").on("click", function(e){if(e.target===this)closeUploadModal();});
         $("#uploadPanelClose").on("click", closeUploadModal);
 
-        // Location mode toggle
         $("input[name='location_mode']").on("change", function () {
             if (this.value === "auto") { $("#autoLocationSection").show(); $("#manualLocationSection").hide(); }
             else { $("#autoLocationSection").hide(); $("#manualLocationSection").show(); $("#geoStatus").text(""); }
         });
 
-        // EXIF on file select
         $("#imageInput").on("change", async function () {
             const file = this.files[0]; if (!file) return;
             if ($("#locModeAuto").is(":checked")) {
@@ -522,12 +500,10 @@ $(function () {
             }
         });
 
-        // Tag pill input (upload form)
         $("#tagPillBox").on("click", ()=>$("#tagTextInput").focus());
         $("#tagTextInput").on("keydown", function(e){if(e.key==="Enter"){e.preventDefault();uploadPills.addFromInput();}})
                          .on("input", function(){if(this.value.includes(","))uploadPills.addFromInput();});
 
-        // Upload form submit via fetch
         $("#uploadForm").on("submit", async function (e) {
             e.preventDefault();
             uploadPills.addFromInput();
@@ -560,13 +536,37 @@ $(function () {
                 const json = await res.json();
                 if (res.ok && json.ok) {
                     closeUploadModal();
-                    feedPage = 1; feedExhausted = false;
-                    $("#resultsGrid").empty(); $("#searchStatus").text("");
-                    activeTags = []; renderActiveTags();
-                    await loadFeedPage();
+                    // Only refresh the feed if we're on the gallery page
+                    if (document.getElementById("resultsGrid")) {
+                        feedPage = 1; feedExhausted = false;
+                        $("#resultsGrid").empty(); $("#searchStatus").text("");
+                        activeTags = []; renderActiveTags();
+                        await loadFeedPage();
+                    }
                 } else { $("#uploadError").text(json.error || "Upload failed.").show(); }
             } catch (err) { console.error(err); $("#uploadError").text("Network error — please try again.").show(); }
         });
+    }
+
+    // ── Gallery page ──────────────────────────────────────────────────────────
+    if (document.getElementById("resultsGrid")) {
+
+        loadFeedPage();
+        initInfiniteScroll();
+
+        $("#tag_input").on("keydown", function (e) {
+            if (e.key === "Enter") { e.preventDefault(); const v=$(this).val().trim(); if(v){addSearchTag(v);$(this).val("");} }
+        }).on("input", function () { if(this.value.includes(",")){addSearchTag(this.value);$(this).val("");} });
+
+        $("#searchForm").on("submit", function (e) {
+            e.preventDefault();
+            const v = $("#tag_input").val().trim();
+            if (v) { addSearchTag(v); $("#tag_input").val(""); }
+            else if (activeTags.length > 0) runSearch();
+        });
+
+        $("#detailOverlay").on("click", function(e){if(e.target===this)closeDetail();});
+        $("#detailClose").on("click", closeDetail);
     }
 
     // ── My Uploads page ───────────────────────────────────────────────────────

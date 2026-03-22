@@ -12,6 +12,7 @@
       <a href="{{ url_for('get_gallery') }}">Gallery</a>
       <a href="{{ url_for('my_uploads_page') }}">My Uploads</a>
       <a href="{{ url_for('help_page') }}">Help</a>
+      <button id="navUploadBtn" aria-label="Upload new foragable">&#43; Upload</button>
       <a href="{{ url_for('logout') }}" class="nav-logout">Sign Out ({{ username }})</a>
     </nav>
 
@@ -80,6 +81,59 @@
             <div class="detail-location-text" id="myDetailUploadedAt"></div>
           </div>
         </div>
+      </div>
+    </div>
+    <!-- ── Upload modal ───────────────────────────────────────────────────── -->
+    <div id="uploadOverlay" aria-modal="true" role="dialog" aria-label="Upload foragable">
+      <div id="uploadPanel">
+        <button id="uploadPanelClose" aria-label="Close">&times;</button>
+        <h2>Upload a Foragable</h2>
+        <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
+          <p>
+            <label>Submission:</label>
+            <input type="file" name="image" id="imageInput" accept="image/*" required>
+          </p>
+          <label>Species Tags:</label>
+          <div class="tag-input-wrapper" id="tagPillBox">
+            <input type="text" id="tagTextInput" placeholder="Type a tag and press Enter or comma…">
+          </div>
+          <p class="tag-hint">Add up to 10 tags. Letters and spaces only. Press Enter or comma to add each one.</p>
+          <input type="hidden" name="tags" id="tagsHidden" value="">
+          <label>Location</label>
+          <div style="display:flex; gap:0.75rem; margin-bottom:1rem; flex-wrap:wrap;">
+            <label style="display:flex; align-items:center; gap:0.4rem; font-weight:600; cursor:pointer;">
+              <input type="radio" name="location_mode" id="locModeAuto" value="auto" checked>
+              Use my device / photo location
+            </label>
+            <label style="display:flex; align-items:center; gap:0.4rem; font-weight:600; cursor:pointer;">
+              <input type="radio" name="location_mode" id="locModeManual" value="manual">
+              Enter an address
+            </label>
+          </div>
+          <div id="autoLocationSection">
+            <p id="geoStatus" style="color:#7D7ABC; font-size:0.9rem; margin-top:-0.5rem;"></p>
+            <input type="hidden" name="latitude"   id="latitude">
+            <input type="hidden" name="longitude"  id="longitude">
+            <input type="hidden" name="geo_source" id="geo_source">
+          </div>
+          <div id="manualLocationSection" style="display:none;">
+            <input type="text" name="manual_address" id="manual_address"
+                   maxlength="300" placeholder="e.g. 123 Oak Street, Portland, OR">
+            <p style="font-size:0.85rem; color:#7D7ABC; margin-top:-0.8rem;">
+              Enter a full address. Coordinates will be looked up automatically.
+            </p>
+          </div>
+          <p>
+            <label>
+              Location Description
+              <span style="font-weight:400; font-size:0.9rem;">(optional extra details)</span>
+            </label>
+            <input type="text" name="location_label" id="location_label"
+                   maxlength="200" placeholder="e.g. North trail near Oak Park">
+          </p>
+          <div id="uploadError" style="display:none;" class="error-message"></div>
+          <button type="submit">Upload</button>
+        </form>
       </div>
     </div>
   </body>
