@@ -69,9 +69,14 @@ def upload_image():
                 location_data = {"latitude": lat, "longitude": lon, "source": source}
             except ValueError:
                 location_data = None
-        elif raw_src == "" and request.form.get("manual_address", "").strip():
-            # Address was entered but geocoding failed — no coordinates came back
+
+        # Explicit flag set by JS when Nominatim returned no results
+        if request.form.get("address_lookup_failed", "").strip() == "1":
             address_not_found = True
+
+    print(f"DEBUG form keys: {list(request.form.keys())}")
+    print(f"DEBUG address_lookup_failed: '{request.form.get('address_lookup_failed', 'NOT PRESENT')}'")
+    print(f"DEBUG address_not_found: {address_not_found}")
 
     # Road proximity lookup
     nearest_road = None

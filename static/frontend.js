@@ -252,7 +252,7 @@ function openUploadModal() {
     $("#uploadForm")[0].reset();
     $("#tagsHidden").val("");
     $("#geoStatus").text("");
-    $("#latitude, #longitude, #geo_source").val("");
+    $("#latitude, #longitude, #geo_source, #address_lookup_failed").val("");
     $("#autoLocationSection").show();
     $("#manualLocationSection").hide();
     $("#locModeAuto").prop("checked", true);
@@ -514,6 +514,7 @@ $(function () {
 
         $("#uploadForm").on("submit", async function (e) {
             e.preventDefault();
+            const form = document.getElementById("uploadForm");
             uploadPills.addFromInput();
             if (uploadPills.getTags().length === 0) { $("#uploadError").text("Please add at least one tag.").show(); return; }
             $("#uploadError").hide();
@@ -524,8 +525,17 @@ $(function () {
                 if (address) {
                     $("#geoStatus").show().text("Looking up address…");
                     const coords = await geocodeAddress(address);
-                    if (coords) { $("#latitude").val(coords.latitude); $("#longitude").val(coords.longitude); $("#geo_source").val("address"); $("#geoStatus").text(`📍 Found: ${coords.latitude}, ${coords.longitude}`); }
-                    else { $("#latitude,#longitude,#geo_source").val(""); $("#geoStatus").show().text("Address not found — uploading without coordinates."); }
+                    if (coords) {
+                        $("#latitude").val(coords.latitude);
+                        $("#longitude").val(coords.longitude);
+                        $("#geo_source").val("address");
+                        $("#address_lookup_failed").val("");
+                        $("#geoStatus").text(`📍 Found: ${coords.latitude}, ${coords.longitude}`);
+                    } else {
+                        $("#latitude,#longitude,#geo_source").val("");
+                        $("#address_lookup_failed").val("1");
+                        $("#geoStatus").show().text("Address not found — uploading without coordinates.");
+                    }
                 }
             } else {
                 if (exifCoords) { $("#latitude").val(exifCoords.latitude); $("#longitude").val(exifCoords.longitude); $("#geo_source").val("exif"); }
@@ -540,7 +550,7 @@ $(function () {
             $("#location_label").val(sanitizeInput($("#location_label").val()));
 
             try {
-                const res  = await fetch("/upload", { method: "POST", body: new FormData(this) });
+                const res  = await fetch("/upload", { method: "POST", body: new FormData(form) });
                 const json = await res.json();
                 if (res.ok && json.ok) {
                     closeUploadModal();
