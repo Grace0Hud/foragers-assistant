@@ -159,16 +159,19 @@ function appendCards(items, gridSelector) {
     items.forEach(item => {
         const tagPills = (item.tags || []).slice(0, 3).map(t => `<span class="card-tag">${t}</span>`).join("");
 
-        // Road warning badge
+        // Road warning badge — or address-not-found badge if geocoding failed
         const warn = item.nearest_road && item.nearest_road.road_warning;
-        const warnBadge = warn
-            ? `<span class="road-warning ${warn.level}">${warn.text}</span>`
-            : "";
+        let badge = "";
+        if (warn) {
+            badge = `<span class="road-warning ${warn.level}">${warn.text}</span>`;
+        } else if (item.address_not_found) {
+            badge = `<span class="road-warning addr">address not found</span>`;
+        }
 
         const card = $(`
             <div class="grid-card" tabindex="0" role="button" aria-label="View details">
                 <img src="/uploads/${encodeURIComponent(item.image)}" alt="Tagged ${(item.tags || []).join(', ')}">
-                ${warnBadge}
+                ${badge}
                 <div class="card-tag-strip">${tagPills}</div>
             </div>
         `);
@@ -271,7 +274,9 @@ async function geocodeAddress(address) {
         const data = await res.json();
         if (data && data.length > 0)
             return { latitude: parseFloat(data[0].lat).toFixed(7), longitude: parseFloat(data[0].lon).toFixed(7) };
-    } catch (_) {}
+    } catch (err) {
+        console.error("Geocoding failed:", err);
+    }
     return null;
 }
 
@@ -352,9 +357,12 @@ async function loadMyUploads() {
             const dateStr  = item.uploaded_at ? new Date(item.uploaded_at).toLocaleDateString() : "";
 
             const warn      = item.nearest_road && item.nearest_road.road_warning;
-            const warnBadge = warn
-                ? `<span class="road-warning ${warn.level}">${warn.text}</span>`
-                : "";
+            let warnBadge = "";
+            if (warn) {
+                warnBadge = `<span class="road-warning ${warn.level}">${warn.text}</span>`;
+            } else if (item.address_not_found) {
+                warnBadge = `<span class="road-warning addr">address not found</span>`;
+            }
 
             const card = $(`
                 <div class="my-card" data-id="${item._id}">

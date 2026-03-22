@@ -332,6 +332,7 @@ button[type="submit"]:hover {
 .road-warning.yellow { background: #F5C518; color: #3a2e00; }
 .road-warning.red    { background: #D32F2F; color: white; }
 .road-warning.black  { background: #1a1a1a; color: white; }
+.road-warning.addr   { background: var(--secondary_dark); color: white; }
 
 /* ── Search tag pills (gallery search bar) ───────────────────────────────── */
 .search-tag-pill {

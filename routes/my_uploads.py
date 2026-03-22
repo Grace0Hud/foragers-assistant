@@ -1,0 +1,86 @@
+from flask import (Blueprint, render_template, request,
+                   jsonify, session, current_app)
+from utils.db import photo_collection, serialize_doc
+from utils.decorators import login_required
+from utils.sanitize import sanitize_tags, parse_object_id
+import os
+
+my_uploads_bp = Blueprint("my_uploads", __name__)
+
+MY_UPLOADS_PROJECTION = {
+    "image":             1,
+    "tags":              1,
+    "location_label":    1,
+    "manual_address":    1,
+    "location_geo":      1,
+    "nearest_road":      1,
+    "address_not_found": 1,
+    "uploaded_at":       1,
+}
+
+
+@my_uploads_bp.route("/my-uploads")
+@login_required
+def my_uploads_page():
+    return render_template("myuploads.html", username=session["username"])
+
+
+@my_uploads_bp.route("/my-uploads/feed")
+@login_required
+def api_my_uploads():
+    """All posts by the current user, sorted newest-first."""
+    docs = [
+        serialize_doc(doc)
+        for doc in photo_collection
+            .find({"uploaded_by": session["username"]}, MY_UPLOADS_PROJECTION)
+            .sort("uploaded_at", -1)
+    ]
+    return jsonify({"images": docs})
+
+
+@my_uploads_bp.route("/my-uploads/delete/<doc_id>", methods=["DELETE"])
+@login_required
+def delete_upload(doc_id):
+    """Delete a post and its image file. Only the owner may delete."""
+    oid = parse_object_id(doc_id)
+    if not oid:
+        return jsonify({"error": "Invalid ID"}), 400
+
+    doc = photo_collection.find_one(
+        {"_id": oid, "uploaded_by": session["username"]},
+        {"image": 1}
+    )
+    if not doc:
+        return jsonify({"error": "Not found or not yours"}), 404
+
+    # Remove image from disk
+    filepath = os.path.join(current_app.config["UPLOAD_FOLDER"], doc["image"])
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    photo_collection.delete_one({"_id": oid})
+    return jsonify({"ok": True})
+
+
+@my_uploads_bp.route("/my-uploads/edit-tags/<doc_id>", methods=["PATCH"])
+@login_required
+def edit_tags(doc_id):
+    """Replace the tags on a post. Only the owner may edit."""
+    oid = parse_object_id(doc_id)
+    if not oid:
+        return jsonify({"error": "Invalid ID"}), 400
+
+    data = request.get_json(silent=True) or {}
+    try:
+        tag_list = sanitize_tags(data.get("tags", ""))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    result = photo_collection.update_one(
+        {"_id": oid, "uploaded_by": session["username"]},
+        {"$set": {"tags": tag_list}}
+    )
+    if result.matched_count == 0:
+        return jsonify({"error": "Not found or not yours"}), 404
+
+    return jsonify({"ok": True, "tags": tag_list})

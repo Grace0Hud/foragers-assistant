@@ -8,8 +8,8 @@
 	<body>
 		<h1>Forager's Assistant</h1>
 		<nav>
-			<a href="{{ url_for('start_index') }}">Home</a>
-			<a href="{{ url_for('get_gallery') }}">Review Foragables</a>
+			<a href="{{ url_for('gallery.get_gallery') }}">Gallery</a>
+			
 		</nav>
 
 		<h2>Sign In</h2>
@@ -34,7 +34,7 @@
 		</form>
 
 		<p style="text-align:center; color: var(--light); margin-top: -1rem;">
-			Don't have an account? <a href="{{ url_for('signup_page') }}" style="color: var(--secondary_light);">Create one</a>
+			Don't have an account? <a href="{{ url_for('auth.signup_page') }}" style="color: var(--secondary_light);">Create one</a>
 		</p>
 	</body>
 </html>
