@@ -13,6 +13,7 @@ from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from datetime import datetime, timezone
 import requests
+from typing import Optional
 
 # Loading environment variables.
 load_dotenv()
@@ -238,7 +239,7 @@ def haversine_metres(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def compute_road_warning(highway_type: str, distance_metres: float) -> dict | None:
+def compute_road_warning(highway_type: str, distance_metres: float) -> Optional[dict]:
     """
     Return a warning dict {"level": "yellow"|"red"|"black", "text": str}
     based on road type and distance, or None if no warning applies.
@@ -275,7 +276,7 @@ def compute_road_warning(highway_type: str, distance_metres: float) -> dict | No
     return None
 
 
-def nearest_road_nominatim(lat: float, lon: float) -> dict | None:
+def nearest_road_nominatim(lat: float, lon: float) -> Optional[dict]:
     """
     Fast first pass: reverse-geocode the coordinates with Nominatim.
     Returns the road name only — type and distance come from Overpass.
@@ -298,7 +299,7 @@ def nearest_road_nominatim(lat: float, lon: float) -> dict | None:
         return None
 
 
-def nearest_road_overpass(lat: float, lon: float, radius: int = 100) -> dict | None:
+def nearest_road_overpass(lat: float, lon: float, radius: int = 100) -> Optional[dict]:
     """
     Query Overpass for highway ways within radius metres, excluding non-road
     types (service, footway, path, track, bridleway, cycleway, steps).
@@ -310,7 +311,7 @@ def nearest_road_overpass(lat: float, lon: float, radius: int = 100) -> dict | N
     # Numeric score for each warning level — higher is more dangerous
     WARNING_SCORE = {"black": 3, "red": 2, "yellow": 1, None: 0}
 
-    def run_query(search_radius: int) -> dict | None:
+    def run_query(search_radius: int) -> Optional[dict]:
         query = f"""
         [out:json][timeout:10];
         way(around:{search_radius},{lat},{lon})[highway];
@@ -391,7 +392,7 @@ def nearest_road_overpass(lat: float, lon: float, radius: int = 100) -> dict | N
     return result
 
 
-def lookup_nearest_road(lat: float, lon: float) -> dict | None:
+def lookup_nearest_road(lat: float, lon: float) -> Optional[dict]:
     """
     Combine Overpass (precise distance + type) with Nominatim (road name fallback).
     Attaches a road_warning based on type and distance before returning.
@@ -439,6 +440,12 @@ def get_gallery():
 @login_required
 def my_uploads_page():
     return render_template("myuploads.html", username=session["username"])
+
+
+@app.route("/help")
+@login_required
+def help_page():
+    return render_template("help.html", username=session["username"])
 
 
 @app.route("/my-uploads/feed")

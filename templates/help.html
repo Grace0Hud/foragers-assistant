@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Forager's Assistant — Help</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  </head>
+  <body>
+    <h1>Forager's Assistant</h1>
+    <nav>
+      <a href="{{ url_for('get_gallery') }}">Gallery</a>
+      <a href="{{ url_for('my_uploads_page') }}">My Uploads</a>
+      <a href="{{ url_for('help_page') }}">Help</a>
+      <a href="{{ url_for('logout') }}" class="nav-logout">Sign Out ({{ username }})</a>
+    </nav>
+
+    <h2>Help &amp; Guide</h2>
+
+    <div class="help-section">
+      <h3 class="help-heading">What is Forager's Assistant?</h3>
+      <p class="help-text">
+        Forager's Assistant is a community photo log for wild foragers. You can submit photos of
+        forageable species you have found, tag them by species name, and record where they were
+        discovered. The gallery lets you and other users browse and search submissions by tag,
+        view location details, and get directions to where something was found.
+      </p>
+    </div>
+
+    <div class="help-section">
+      <h3 class="help-heading">Uploading a Submission</h3>
+      <p class="help-text">
+        Click the <strong>+ Upload</strong> button in the navigation bar from any page to open
+        the upload panel. Fill in the following:
+      </p>
+      <ul class="help-list">
+        <li><strong>Photo</strong> — select an image from your device. If the photo has GPS data
+            embedded (common on smartphone photos), coordinates will be extracted automatically.</li>
+        <li><strong>Species Tags</strong> — type a species name and press Enter or comma to add it
+            as a tag. You can add up to 10 tags per submission. Tags help others find your photo
+            when searching.</li>
+        <li><strong>Location</strong> — choose between letting the app detect your location
+            automatically (from the photo's GPS data or your device) or entering a street address
+            manually. Either way, the app will record the coordinates and find the nearest road.</li>
+        <li><strong>Location Description</strong> — an optional free-text note about where you
+            found the species, such as "north side of the trail" or "under the oak trees".</li>
+      </ul>
+    </div>
+
+    <div class="help-section">
+      <h3 class="help-heading">Browsing the Gallery</h3>
+      <p class="help-text">
+        The gallery loads the most recent 20 submissions automatically and adds more as you scroll
+        down. To search by species, type a tag into the search bar and press Enter or comma. You
+        can add multiple tags — the gallery will show only submissions that match <em>all</em> of
+        your active tags. Remove a tag by clicking the &times; on its pill. Clearing all tags
+        returns to the full feed.
+      </p>
+      <p class="help-text">
+        Click any photo to open its detail panel, which shows the full tag list, location
+        description, GPS coordinates with a link to Google Maps directions, the nearest road, and
+        the upload date. Clicking a tag in the detail panel adds it to your active search filters.
+      </p>
+    </div>
+
+    <div class="help-section">
+      <h3 class="help-heading">My Uploads</h3>
+      <p class="help-text">
+        The <strong>My Uploads</strong> page shows all submissions you have made. From here you can:
+      </p>
+      <ul class="help-list">
+        <li>Click a photo to view its full details.</li>
+        <li>Click <strong>Edit Tags</strong> to update the tags on a submission without re-uploading.</li>
+        <li>Click <strong>Delete</strong> to permanently remove a submission. This deletes both the
+            database record and the image file and cannot be undone.</li>
+      </ul>
+    </div>
+
+    <div class="help-section">
+      <h3 class="help-heading">Road Proximity Warnings</h3>
+      <p class="help-text">
+        When a submission has location data, the app automatically checks how close it is to
+        nearby roads using OpenStreetMap data. A coloured badge is shown on the gallery card if
+        the sample was found near a road. These warnings are intended to help foragers assess
+        whether a location may have been exposed to road runoff, vehicle pollution, or other
+        roadside contaminants.
+      </p>
+
+      <p class="help-text">Warnings are shown for two categories of road:</p>
+
+      <table class="help-table">
+        <thead>
+          <tr>
+            <th>Road type</th>
+            <th>Examples</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Major road</strong></td>
+            <td>Motorway, highway, trunk road, primary road, secondary road</td>
+          </tr>
+          <tr>
+            <td><strong>Minor road</strong></td>
+            <td>Residential street, tertiary road, unclassified road, living street</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="help-text" style="margin-top:1.2rem;">The badge colour indicates the severity:</p>
+
+      <div class="warning-legend">
+        <div class="warning-legend-row">
+          <span class="legend-badge road-warning yellow">near major road</span>
+          <span class="legend-text">
+            <strong>Yellow — caution.</strong> The sample was found within 60 m of a major road
+            or within 30 m of a minor road. Mild contamination risk. Consider washing thoroughly.
+          </span>
+        </div>
+        <div class="warning-legend-row">
+          <span class="legend-badge road-warning red">near major road</span>
+          <span class="legend-text">
+            <strong>Red — elevated risk.</strong> The sample was found within 30 m of a major
+            road or within 15 m of a minor road. Higher likelihood of road contamination.
+            Exercise caution and consider avoiding consumption.
+          </span>
+        </div>
+        <div class="warning-legend-row">
+          <span class="legend-badge road-warning black">near major road</span>
+          <span class="legend-text">
+            <strong>Black — high risk.</strong> The sample was found within 15 m of a major road
+            or within 5 m of a minor road. Very close proximity to traffic. Not recommended for
+            consumption.
+          </span>
+        </div>
+      </div>
+
+      <p class="help-text">
+        Paths, footways, cycle paths, bridleways, and service roads are excluded from proximity
+        calculations — only vehicle roads are considered. If no location data is available for a
+        submission, no badge is shown.
+      </p>
+      <p class="help-text">
+        <strong>These warnings are a guide only.</strong> Road proximity is one factor in assessing
+        foraging safety. Always apply your own judgment and consult expert sources before consuming
+        any wild species.
+      </p>
+    </div>
+
+  </body>
+</html>
