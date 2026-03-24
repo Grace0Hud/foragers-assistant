@@ -133,6 +133,15 @@
             consumption.
           </span>
         </div>
+        <div class="warning-legend-row">
+          <span class="legend-badge road-warning addr">address not found</span>
+          <span class="legend-text">
+            <strong>Address not found.</strong> A manual address was entered but could not be
+            located in the map database. No coordinates were recorded for this submission, so
+            road proximity warnings cannot be calculated. Consider re-uploading with a more
+            recognisable address or using device location instead.
+          </span>
+        </div>
       </div>
 
       <p class="help-text">
@@ -174,11 +183,12 @@
               Enter an address
             </label>
           </div>
+          <p id="geoStatus" style="color:#7D7ABC; font-size:0.9rem;"></p>
           <div id="autoLocationSection">
-            <p id="geoStatus" style="color:#7D7ABC; font-size:0.9rem; margin-top:-0.5rem;"></p>
             <input type="hidden" name="latitude"   id="latitude">
             <input type="hidden" name="longitude"  id="longitude">
             <input type="hidden" name="geo_source" id="geo_source">
+            <input type="hidden" name="address_lookup_failed" id="address_lookup_failed">
           </div>
           <div id="manualLocationSection" style="display:none;">
             <input type="text" name="manual_address" id="manual_address"

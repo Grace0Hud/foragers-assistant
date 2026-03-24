@@ -885,6 +885,64 @@ button[type="submit"]:hover {
   box-shadow: 0 8px 20px rgba(0,0,0,0.25);
 }
 
+/* ── Detail modal inline edit controls ──────────────────────────────────── */
+.detail-edit-btn {
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: none;
+  background: var(--secondary_dark);
+  color: white;
+  cursor: pointer;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  transition: background 0.15s ease, transform 0.1s ease;
+  box-shadow: none;
+  width: auto;
+  letter-spacing: normal;
+}
+
+.detail-edit-btn:hover {
+  background: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: none;
+}
+
+.detail-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.detail-save-btn,
+.detail-cancel-btn {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  border: none;
+  font-weight: 800;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+  box-shadow: none;
+  width: auto;
+  letter-spacing: normal;
+}
+
+.detail-save-btn {
+  background: var(--primary);
+  color: white;
+}
+
+.detail-save-btn:hover { transform: translateY(-1px); box-shadow: none; }
+
+.detail-cancel-btn {
+  background: #eee;
+  color: var(--dark);
+}
+
+.detail-cancel-btn:hover { background: #ddd; transform: none; box-shadow: none; }
+
 /* ── Help page ───────────────────────────────────────────────────────────── */
 .help-section {
   background: white;

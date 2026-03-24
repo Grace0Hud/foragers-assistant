@@ -2,7 +2,8 @@ from flask import (Blueprint, render_template, request,
                    jsonify, session, current_app)
 from utils.db import photo_collection, serialize_doc
 from utils.decorators import login_required
-from utils.sanitize import sanitize_tags, parse_object_id
+from utils.sanitize import sanitize_tags, sanitize_location_label, parse_object_id
+from utils.geo import lookup_nearest_road
 import os
 
 my_uploads_bp = Blueprint("my_uploads", __name__)
@@ -84,3 +85,67 @@ def edit_tags(doc_id):
         return jsonify({"error": "Not found or not yours"}), 404
 
     return jsonify({"ok": True, "tags": tag_list})
+
+
+@my_uploads_bp.route("/my-uploads/edit-location/<doc_id>", methods=["PATCH"])
+@login_required
+def edit_location(doc_id):
+    """Update address, location label, and re-run road lookup. Owner only."""
+    oid = parse_object_id(doc_id)
+    if not oid:
+        return jsonify({"error": "Invalid ID"}), 400
+
+    data = request.get_json(silent=True) or {}
+
+    try:
+        manual_address = sanitize_location_label(data.get("manual_address", ""))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        location_label = sanitize_location_label(data.get("location_label", ""))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    # Geocode the new address if one was provided
+    location_geo      = None
+    nearest_road      = None
+    address_not_found = False
+
+    if manual_address:
+        lat = data.get("latitude")
+        lon = data.get("longitude")
+        if lat is not None and lon is not None:
+            location_geo = {
+                "latitude":  round(float(lat), 7),
+                "longitude": round(float(lon), 7),
+                "source":    "address",
+            }
+            address_not_found = False  # explicitly clear — geocoding succeeded
+        else:
+            address_not_found = True   # address entered but coords not found
+
+        if location_geo:
+            try:
+                nearest_road = lookup_nearest_road(
+                    location_geo["latitude"], location_geo["longitude"]
+                )
+            except Exception as e:
+                print(f"Road lookup failed: {e}")
+
+    updates = {
+        "manual_address":    manual_address,
+        "location_label":    location_label,
+        "location_geo":      location_geo,
+        "nearest_road":      nearest_road,
+        "address_not_found": address_not_found,
+    }
+
+    result = photo_collection.update_one(
+        {"_id": oid, "uploaded_by": session["username"]},
+        {"$set": updates}
+    )
+    if result.matched_count == 0:
+        return jsonify({"error": "Not found or not yours"}), 404
+
+    return jsonify({"ok": True, **updates})

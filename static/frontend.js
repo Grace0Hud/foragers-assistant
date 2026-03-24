@@ -382,7 +382,7 @@ async function loadMyUploads() {
                 </div>
             `);
 
-            card.find(".btn-edit").on("click", (e) => { e.stopPropagation(); openEditModal(item._id, item.tags || []); });
+            card.find(".btn-edit").on("click",   (e) => { e.stopPropagation(); openMyDetail(item); });
             card.find(".btn-delete").on("click", (e) => { e.stopPropagation(); openDeleteConfirm(item._id); });
 
             $("#myUploadsGrid").append(card);
@@ -393,30 +393,38 @@ async function loadMyUploads() {
     }
 }
 
-function openMyDetail(item) {
-    const overlay = document.getElementById("myDetailOverlay");
-    if (!overlay) { console.error("myDetailOverlay not found in DOM"); return; }
+// Current item open in the detail modal — used by inline edit handlers
+let myDetailItem = null;
+
+function renderMyDetail(item) {
+    myDetailItem = item;
 
     $("#myDetailImg")
         .attr("src", `/uploads/${encodeURIComponent(item.image)}`)
         .attr("alt", (item.tags || []).join(", "));
 
-    // Tags (display only — no search action on this page)
-    const tagsEl = $("#myDetailTags").empty();
-    (item.tags || []).forEach(tag => {
-        tagsEl.append(`<span class="detail-tag-pill">${tag}</span>`);
-    });
+    // Tags
+    renderMyDetailTags(item.tags || []);
 
-    // Location label + manual address
-    const locationText = [item.manual_address, item.location_label].filter(Boolean).join(" — ");
-    if (locationText) {
-        $("#myDetailLocationLabel").text(locationText);
-        $("#myDetailLocationLabelRow").show();
+    // Address
+    if (item.manual_address) {
+        $("#myDetailAddress").text(item.manual_address);
+        $("#myDetailAddressRow").show();
     } else {
-        $("#myDetailLocationLabelRow").hide();
+        $("#myDetailAddress").text("None");
+        $("#myDetailAddressRow").show();
     }
 
-    // Coordinates with Google Maps link
+    // Location description
+    if (item.location_label) {
+        $("#myDetailLocationLabel").text(item.location_label);
+        $("#myDetailLocationLabelRow").show();
+    } else {
+        $("#myDetailLocationLabel").text("None");
+        $("#myDetailLocationLabelRow").show();
+    }
+
+    // Coordinates
     const geo = item.location_geo;
     if (geo && geo.latitude != null && geo.longitude != null) {
         $("#myDetailCoordsLink").attr("href",
@@ -443,11 +451,39 @@ function openMyDetail(item) {
         $("#myDetailRoadRow").hide();
     }
 
-    // Timestamp
     $("#myDetailUploadedAt").text(
         item.uploaded_at ? new Date(item.uploaded_at).toLocaleString() : "Unknown"
     );
 
+    // Collapse any open edit sections
+    $("#editTagsSection, #editAddressSection, #editLocationSection").hide();
+    $("#myDetailError").hide();
+}
+
+function renderMyDetailTags(tags) {
+    const tagsEl = $("#myDetailTags").empty();
+    tags.forEach(tag => tagsEl.append(`<span class="detail-tag-pill">${tag}</span>`));
+}
+
+// Update the road warning / address-not-found badge on a card in-place
+function updateCardBadge(docId, item) {
+    const card = $(`[data-id="${docId}"]`);
+    if (!card.length) return;
+    card.find(".road-warning").remove();
+    const warn = item.nearest_road && item.nearest_road.road_warning;
+    let badge = "";
+    if (warn) {
+        badge = `<span class="road-warning ${warn.level}">${warn.text}</span>`;
+    } else if (item.address_not_found) {
+        badge = `<span class="road-warning addr">address not found</span>`;
+    }
+    if (badge) card.find(".my-card-img-wrap").prepend(badge);
+}
+
+function openMyDetail(item) {
+    const overlay = document.getElementById("myDetailOverlay");
+    if (!overlay) { console.error("myDetailOverlay not found in DOM"); return; }
+    renderMyDetail(item);
     $("#myDetailOverlay").addClass("open");
     document.body.style.overflow = "hidden";
 }
@@ -455,17 +491,14 @@ function openMyDetail(item) {
 function closeMyDetail() {
     $("#myDetailOverlay").removeClass("open");
     document.body.style.overflow = "";
+    myDetailItem = null;
 }
 
 function openEditModal(docId, currentTags) {
-    editPills.setTags(currentTags);
-    $("#editDocId").val(docId);
-    $("#editError").hide();
-    $("#editOverlay").addClass("open");
-    document.body.style.overflow = "hidden";
+    // No longer used — editing is now inline in the detail modal
 }
 
-function closeEditModal() { $("#editOverlay").removeClass("open"); document.body.style.overflow = ""; }
+function closeEditModal() {}
 
 function openDeleteConfirm(docId) {
     pendingDeleteId = docId;
@@ -536,6 +569,11 @@ $(function () {
                         $("#address_lookup_failed").val("1");
                         $("#geoStatus").show().text("Address not found — uploading without coordinates.");
                     }
+                } else {
+                    // Manual mode selected but address left blank
+                    $("#latitude,#longitude,#geo_source").val("");
+                    $("#address_lookup_failed").val("1");
+                    $("#geoStatus").show().text("No address entered — uploading without coordinates.");
                 }
             } else {
                 if (exifCoords) { $("#latitude").val(exifCoords.latitude); $("#longitude").val(exifCoords.longitude); $("#geo_source").val("exif"); }
@@ -600,20 +638,25 @@ $(function () {
             if (item) openMyDetail(item);
         });
 
-        // Edit tag pill input
-        $("#editTagPillBox").on("click", ()=>$("#editTagTextInput").focus());
-        $("#editTagTextInput").on("keydown", function(e){if(e.key==="Enter"){e.preventDefault();editPills.addFromInput();}})
-                              .on("input", function(){if(this.value.includes(","))editPills.addFromInput();});
+        // ── Inline tag editing ────────────────────────────────────────────────
+        $("#editTagsBtn").on("click", function () {
+            editPills.setTags(myDetailItem ? myDetailItem.tags || [] : []);
+            $("#editTagsSection").show();
+            $("#editTagTextInput").focus();
+        });
+        $("#cancelTagsBtn").on("click", () => $("#editTagsSection").hide());
+        $("#editTagPillBox").on("click", () => $("#editTagTextInput").focus());
+        $("#editTagTextInput")
+            .on("keydown", function(e){ if(e.key==="Enter"){e.preventDefault();editPills.addFromInput();} })
+            .on("input",   function(){ if(this.value.includes(","))editPills.addFromInput(); });
 
-        // Edit form submit
-        $("#editForm").on("submit", async function (e) {
-            e.preventDefault();
+        $("#saveTagsBtn").on("click", async function () {
             editPills.addFromInput();
-            const tags   = editPills.getTags();
-            const docId  = $("#editDocId").val();
-            if (tags.length === 0) { $("#editError").text("Please add at least one tag.").show(); return; }
-            $("#editError").hide();
-
+            const tags  = editPills.getTags();
+            const docId = myDetailItem && myDetailItem._id;
+            if (!docId) return;
+            if (tags.length === 0) { $("#myDetailError").text("Please add at least one tag.").show(); return; }
+            $("#myDetailError").hide();
             try {
                 const res  = await fetch(`/my-uploads/edit-tags/${docId}`, {
                     method: "PATCH",
@@ -622,18 +665,94 @@ $(function () {
                 });
                 const json = await res.json();
                 if (res.ok && json.ok) {
-                    // Update the card's tag display in-place
-                    const card    = $(`[data-id="${docId}"]`);
+                    myDetailItem.tags = json.tags;
+                    window._myUploadsMap[docId].tags = json.tags;
+                    renderMyDetailTags(json.tags);
+                    // Update card tag strip
                     const newPills = json.tags.map(t => `<span class="my-card-tag">${t}</span>`).join("");
-                    card.find(".my-card-tags").html(newPills);
-                    closeEditModal();
-                } else { $("#editError").text(json.error || "Save failed.").show(); }
-            } catch (err) { console.error(err); $("#editError").text("Network error — please try again.").show(); }
+                    $(`[data-id="${docId}"]`).find(".my-card-tags").html(newPills);
+                    $("#editTagsSection").hide();
+                } else { $("#myDetailError").text(json.error || "Save failed.").show(); }
+            } catch (err) { console.error(err); $("#myDetailError").text("Network error.").show(); }
         });
 
-        // Edit modal close
-        $("#editOverlay").on("click", function(e){if(e.target===this)closeEditModal();});
-        $("#editPanelClose").on("click", closeEditModal);
+        // ── Inline address editing ────────────────────────────────────────────
+        $("#editAddressBtn").on("click", function () {
+            $("#editAddressInput").val(myDetailItem ? myDetailItem.manual_address || "" : "");
+            $("#editAddressStatus").text("");
+            $("#editAddressSection").show();
+            $("#editAddressInput").focus();
+        });
+        $("#cancelAddressBtn").on("click", () => $("#editAddressSection").hide());
+
+        $("#saveAddressBtn").on("click", async function () {
+            const docId   = myDetailItem && myDetailItem._id;
+            if (!docId) return;
+            const address = sanitizeInput($("#editAddressInput").val().trim());
+            const locLabel = sanitizeInput($("#editLocationInput").val().trim()) ||
+                             (myDetailItem ? myDetailItem.location_label || "" : "");
+
+            let lat = null, lon = null;
+            if (address) {
+                $("#editAddressStatus").text("Looking up address…");
+                const coords = await geocodeAddress(address);
+                if (coords) {
+                    lat = coords.latitude;
+                    lon = coords.longitude;
+                    $("#editAddressStatus").text(`📍 Found: ${lat}, ${lon}`);
+                } else {
+                    $("#editAddressStatus").text("Address not found — saving without coordinates.");
+                }
+            }
+
+            try {
+                const res  = await fetch(`/my-uploads/edit-location/${docId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ manual_address: address, location_label: locLabel, latitude: lat, longitude: lon })
+                });
+                const json = await res.json();
+                if (res.ok && json.ok) {
+                    myDetailItem.manual_address    = json.manual_address;
+                    myDetailItem.location_geo      = json.location_geo;
+                    myDetailItem.nearest_road      = json.nearest_road;
+                    myDetailItem.address_not_found = json.address_not_found;
+                    window._myUploadsMap[docId]    = { ...window._myUploadsMap[docId], ...myDetailItem };
+                    updateCardBadge(docId, myDetailItem);
+                    renderMyDetail(myDetailItem);
+                } else { $("#myDetailError").text(json.error || "Save failed.").show(); }
+            } catch (err) { console.error(err); $("#myDetailError").text("Network error.").show(); }
+        });
+
+        // ── Inline location description editing ───────────────────────────────
+        $("#editLocationBtn").on("click", function () {
+            $("#editLocationInput").val(myDetailItem ? myDetailItem.location_label || "" : "");
+            $("#editLocationSection").show();
+            $("#editLocationInput").focus();
+        });
+        $("#cancelLocationBtn").on("click", () => $("#editLocationSection").hide());
+
+        $("#saveLocationBtn").on("click", async function () {
+            const docId    = myDetailItem && myDetailItem._id;
+            if (!docId) return;
+            const locLabel  = sanitizeInput($("#editLocationInput").val().trim());
+            const address   = myDetailItem ? myDetailItem.manual_address || "" : "";
+            const lat       = myDetailItem && myDetailItem.location_geo ? myDetailItem.location_geo.latitude : null;
+            const lon       = myDetailItem && myDetailItem.location_geo ? myDetailItem.location_geo.longitude : null;
+            try {
+                const res  = await fetch(`/my-uploads/edit-location/${docId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ manual_address: address, location_label: locLabel, latitude: lat, longitude: lon })
+                });
+                const json = await res.json();
+                if (res.ok && json.ok) {
+                    myDetailItem.location_label = json.location_label;
+                    window._myUploadsMap[docId].location_label = json.location_label;
+                    renderMyDetail(myDetailItem);
+                } else { $("#myDetailError").text(json.error || "Save failed.").show(); }
+            } catch (err) { console.error(err); $("#myDetailError").text("Network error.").show(); }
+        });
 
         // Detail modal close
         $("#myDetailOverlay").on("click", function(e){if(e.target===this)closeMyDetail();});

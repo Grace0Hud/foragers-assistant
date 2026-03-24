@@ -20,25 +20,6 @@
     <div id="myUploadsStatus">Loading…</div>
     <div id="myUploadsGrid" class="grid"></div>
 
-    <!-- ── Edit tags modal ────────────────────────────────────────────────── -->
-    <div id="editOverlay" role="dialog" aria-modal="true" aria-label="Edit tags">
-      <div id="editPanel">
-        <button id="editPanelClose" aria-label="Close">&times;</button>
-        <h2>Edit Tags</h2>
-        <form id="editForm">
-          <input type="hidden" id="editDocId">
-          <label>Tags:</label>
-          <div class="tag-input-wrapper" id="editTagPillBox">
-            <input type="text" id="editTagTextInput" placeholder="Type a tag and press Enter or comma…">
-          </div>
-          <p class="tag-hint">Letters and spaces only. Press Enter or comma to add each one.</p>
-          <input type="hidden" id="editTagsHidden">
-          <div id="editError" class="error-message" style="display:none;"></div>
-          <button type="submit">Save Tags</button>
-        </form>
-      </div>
-    </div>
-
     <!-- ── Delete confirm modal ───────────────────────────────────────────── -->
     <div id="deleteOverlay" role="dialog" aria-modal="true" aria-label="Confirm delete">
       <div id="deletePanel">
@@ -50,7 +31,7 @@
       </div>
     </div>
 
-    <!-- ── Detail modal ───────────────────────────────────────────────────── -->
+    <!-- ── Detail / Edit modal ────────────────────────────────────────────── -->
     <div id="myDetailOverlay" role="dialog" aria-modal="true" aria-label="Post details">
       <div id="myDetailPanel">
         <div id="myDetailPanelWrap">
@@ -58,14 +39,65 @@
           <button id="myDetailClose" aria-label="Close">&times;</button>
         </div>
         <div id="myDetailBody">
+
+          <!-- Tags row — view + edit toggle -->
           <div class="detail-row" id="myDetailTagsRow">
-            <div class="detail-label">Tags</div>
+            <div class="detail-label">
+              Tags
+              <button class="detail-edit-btn" id="editTagsBtn">Edit</button>
+            </div>
             <div class="detail-tags" id="myDetailTags"></div>
+            <div id="editTagsSection" style="display:none; margin-top:0.6rem;">
+              <div class="tag-input-wrapper" id="editTagPillBox">
+                <input type="text" id="editTagTextInput" placeholder="Type a tag and press Enter or comma…">
+              </div>
+              <p class="tag-hint">Letters and spaces only. Press Enter or comma to add each one.</p>
+              <input type="hidden" id="editTagsHidden">
+              <div class="detail-edit-actions">
+                <button class="detail-save-btn" id="saveTagsBtn">Save Tags</button>
+                <button class="detail-cancel-btn" id="cancelTagsBtn">Cancel</button>
+              </div>
+            </div>
           </div>
+
+          <!-- Address row — view + edit toggle -->
+          <div class="detail-row" id="myDetailAddressRow">
+            <div class="detail-label">
+              Address
+              <button class="detail-edit-btn" id="editAddressBtn">Edit</button>
+            </div>
+            <div class="detail-location-text" id="myDetailAddress"></div>
+            <div id="editAddressSection" style="display:none; margin-top:0.6rem;">
+              <input type="text" id="editAddressInput" maxlength="300"
+                     placeholder="e.g. 123 Oak Street, Portland, OR">
+              <p style="font-size:0.85rem; color:#7D7ABC; margin-top:-0.8rem; margin-bottom:0.8rem;">
+                Coordinates will be looked up automatically from the new address.
+              </p>
+              <div class="detail-edit-actions">
+                <button class="detail-save-btn" id="saveAddressBtn">Save Address</button>
+                <button class="detail-cancel-btn" id="cancelAddressBtn">Cancel</button>
+              </div>
+              <p id="editAddressStatus" style="font-size:0.85rem; color:#7D7ABC; margin-top:0.4rem;"></p>
+            </div>
+          </div>
+
+          <!-- Location description row — view + edit toggle -->
           <div class="detail-row" id="myDetailLocationLabelRow">
-            <div class="detail-label">Location</div>
+            <div class="detail-label">
+              Location Description
+              <button class="detail-edit-btn" id="editLocationBtn">Edit</button>
+            </div>
             <div class="detail-location-text" id="myDetailLocationLabel"></div>
+            <div id="editLocationSection" style="display:none; margin-top:0.6rem;">
+              <input type="text" id="editLocationInput" maxlength="200"
+                     placeholder="e.g. North trail near Oak Park">
+              <div class="detail-edit-actions">
+                <button class="detail-save-btn" id="saveLocationBtn">Save</button>
+                <button class="detail-cancel-btn" id="cancelLocationBtn">Cancel</button>
+              </div>
+            </div>
           </div>
+
           <div class="detail-row" id="myDetailCoordsRow">
             <div class="detail-label">Coordinates</div>
             <a id="myDetailCoordsLink" class="detail-location-link" href="#" target="_blank" rel="noopener">
@@ -80,6 +112,8 @@
             <div class="detail-label">Uploaded at</div>
             <div class="detail-location-text" id="myDetailUploadedAt"></div>
           </div>
+
+          <div id="myDetailError" class="error-message" style="display:none;"></div>
         </div>
       </div>
     </div>
@@ -110,11 +144,12 @@
               Enter an address
             </label>
           </div>
+          <p id="geoStatus" style="color:#7D7ABC; font-size:0.9rem;"></p>
           <div id="autoLocationSection">
-            <p id="geoStatus" style="color:#7D7ABC; font-size:0.9rem; margin-top:-0.5rem;"></p>
             <input type="hidden" name="latitude"   id="latitude">
             <input type="hidden" name="longitude"  id="longitude">
             <input type="hidden" name="geo_source" id="geo_source">
+            <input type="hidden" name="address_lookup_failed" id="address_lookup_failed">
           </div>
           <div id="manualLocationSection" style="display:none;">
             <input type="text" name="manual_address" id="manual_address"
