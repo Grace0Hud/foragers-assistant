@@ -650,239 +650,23 @@ button[type="submit"]:hover {
   margin-top: 0.5rem;
 }
 
-.my-card {
-  background: white;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-soft);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+.my-upload-card {
+  display: block;
 }
 
 .my-card-img-wrap {
   position: relative;
-  cursor: pointer;
   overflow: hidden;
 }
 
 .my-card-img-wrap img {
   width: 100%;
-  height: 180px;
+  height: 200px;
   object-fit: cover;
   display: block;
   border: none;
   box-shadow: none;
   border-radius: 0;
-  transition: transform 0.2s ease;
-}
-
-.my-card-img-wrap:hover img {
-  transform: scale(1.04);
-  box-shadow: none;
-}
-
-.my-card-body {
-  padding: 0.8rem;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.my-card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-}
-
-.my-card-tag {
-  background: var(--primary);
-  color: white;
-  font-size: 0.75rem;
-  font-weight: 800;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-}
-
-.my-card-date {
-  font-size: 0.8rem;
-  color: #888;
-  margin-top: auto;
-}
-
-.my-card-actions {
-  display: flex;
-  gap: 0.5rem;
-  padding: 0 0.8rem 0.8rem;
-}
-
-.btn-edit,
-.btn-delete {
-  flex: 1;
-  padding: 0.5rem;
-  border: none;
-  border-radius: var(--radius-md);
-  font-weight: 800;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: transform 0.1s ease, box-shadow 0.15s ease;
-}
-
-.btn-edit {
-  background: var(--secondary_dark);
-  color: white;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-.btn-edit:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
-}
-
-.btn-delete {
-  background: var(--tertiary);
-  color: white;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-.btn-delete:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
-}
-
-/* ── Edit tags modal ─────────────────────────────────────────────────────── */
-#editOverlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.65);
-  z-index: 700;
-  justify-content: center;
-  align-items: center;
-  padding: 1rem;
-}
-
-#editOverlay.open { display: flex; }
-
-#editPanel {
-  background: white;
-  border-radius: var(--radius-lg);
-  box-shadow: 0 30px 80px rgba(0,0,0,0.4);
-  max-width: 500px;
-  width: 100%;
-  padding: 2rem;
-  position: relative;
-}
-
-#editPanel h2 {
-  margin: 0 0 1.2rem;
-  color: var(--dark);
-  font-size: 1.2rem;
-}
-
-#editPanel form {
-  box-shadow: none;
-  padding: 0;
-  border-radius: 0;
-  margin: 0;
-}
-
-#editPanelClose {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  background: rgba(0,0,0,0.1);
-  color: var(--dark);
-  border: none;
-  border-radius: 999px;
-  width: 2rem;
-  height: 2rem;
-  font-size: 1.1rem;
-  font-weight: 900;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: none;
-  padding: 0;
-}
-
-#editPanelClose:hover {
-  background: var(--tertiary);
-  color: white;
-  transform: none;
-  box-shadow: none;
-}
-
-/* ── Delete confirm modal ────────────────────────────────────────────────── */
-#deleteOverlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.65);
-  z-index: 800;
-  justify-content: center;
-  align-items: center;
-  padding: 1rem;
-}
-
-#deleteOverlay.open { display: flex; }
-
-#deletePanel {
-  background: white;
-  border-radius: var(--radius-lg);
-  box-shadow: 0 30px 80px rgba(0,0,0,0.4);
-  max-width: 420px;
-  width: 100%;
-  padding: 2rem;
-  text-align: center;
-}
-
-#deletePanel p {
-  color: var(--dark);
-  margin-bottom: 1.5rem;
-  font-size: 1rem;
-}
-
-.delete-actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-}
-
-#deleteCancelBtn {
-  flex: 1;
-  padding: 0.8rem;
-  border-radius: var(--radius-md);
-  background: #eee;
-  border: none;
-  font-weight: 800;
-  cursor: pointer;
-  font-size: 0.95rem;
-}
-
-#deleteCancelBtn:hover {
-  background: #ddd;
-  transform: none;
-  box-shadow: none;
-}
-
-#deleteConfirmBtn {
-  flex: 1;
-  padding: 0.8rem;
-  border-radius: var(--radius-md);
-  background: var(--tertiary);
-  color: white;
-  border: none;
-  font-weight: 800;
-  cursor: pointer;
-  font-size: 0.95rem;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}
-
-#deleteConfirmBtn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.25);
 }
 
 /* ── Detail modal inline edit controls ──────────────────────────────────── */
@@ -942,6 +726,36 @@ button[type="submit"]:hover {
 }
 
 .detail-cancel-btn:hover { background: #ddd; transform: none; box-shadow: none; }
+
+.detail-danger-row {
+  padding-top: 0.25rem;
+  border-top: 1px solid rgba(48, 54, 47, 0.12);
+}
+
+.detail-danger-text {
+  font-size: 0.92rem;
+  color: var(--dark);
+  margin: 0 0 0.75rem;
+}
+
+.detail-delete-btn {
+  padding: 0.7rem 1rem;
+  border-radius: var(--radius-md);
+  border: none;
+  font-weight: 800;
+  font-size: 0.9rem;
+  cursor: pointer;
+  background: var(--tertiary);
+  color: white;
+  box-shadow: none;
+  width: auto;
+  letter-spacing: normal;
+}
+
+.detail-delete-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: none;
+}
 
 /* ── Help page ───────────────────────────────────────────────────────────── */
 .help-section {

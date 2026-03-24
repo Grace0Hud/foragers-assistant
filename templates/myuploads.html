@@ -21,16 +21,6 @@
     <div id="myUploadsGrid" class="grid"></div>
 
     <!-- ── Delete confirm modal ───────────────────────────────────────────── -->
-    <div id="deleteOverlay" role="dialog" aria-modal="true" aria-label="Confirm delete">
-      <div id="deletePanel">
-        <p>Are you sure you want to delete this post? This cannot be undone.</p>
-        <div class="delete-actions">
-          <button id="deleteCancelBtn">Cancel</button>
-          <button id="deleteConfirmBtn">Delete</button>
-        </div>
-      </div>
-    </div>
-
     <!-- ── Detail / Edit modal ────────────────────────────────────────────── -->
     <div id="myDetailOverlay" role="dialog" aria-modal="true" aria-label="Post details">
       <div id="myDetailPanel">
@@ -111,6 +101,12 @@
           <div class="detail-row">
             <div class="detail-label">Uploaded at</div>
             <div class="detail-location-text" id="myDetailUploadedAt"></div>
+          </div>
+
+          <div class="detail-row detail-danger-row">
+            <div class="detail-label">Delete Upload</div>
+            <p class="detail-danger-text">This permanently removes the image and its submission record.</p>
+            <button class="detail-delete-btn" id="deleteUploadBtn" type="button">Delete Upload</button>
           </div>
 
           <div id="myDetailError" class="error-message" style="display:none;"></div>

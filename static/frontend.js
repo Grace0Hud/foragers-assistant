@@ -338,8 +338,6 @@ function getBrowserLocation() {
 
 // ── My Uploads page ───────────────────────────────────────────────────────────
 
-let pendingDeleteId = null;
-
 async function loadMyUploads() {
     try {
         const res  = await fetch("/my-uploads/feed");
@@ -347,14 +345,13 @@ async function loadMyUploads() {
 
         $("#myUploadsStatus").text(data.images.length === 0 ? "You haven't uploaded anything yet." : "");
 
-        // Keep a lookup map so the delegated click handler can find the full item by _id
+        // Keep a lookup map so other handlers can find the full item by _id
         window._myUploadsMap = {};
 
         data.images.forEach(item => {
             window._myUploadsMap[item._id] = item;
 
-            const tagPills = (item.tags || []).map(t => `<span class="my-card-tag">${t}</span>`).join("");
-            const dateStr  = item.uploaded_at ? new Date(item.uploaded_at).toLocaleDateString() : "";
+            const tagPills = (item.tags || []).slice(0, 3).map(t => `<span class="card-tag">${t}</span>`).join("");
 
             const warn      = item.nearest_road && item.nearest_road.road_warning;
             let warnBadge = "";
@@ -365,25 +362,20 @@ async function loadMyUploads() {
             }
 
             const card = $(`
-                <div class="my-card" data-id="${item._id}">
-                    <div class="my-card-img-wrap" tabindex="0" role="button" aria-label="View details">
+                <div class="grid-card my-upload-card" data-id="${item._id}" tabindex="0" role="button" aria-label="View details">
+                    <div class="my-card-img-wrap">
                         <img src="/uploads/${encodeURIComponent(item.image)}"
                              alt="${(item.tags||[]).join(', ')}">
                         ${warnBadge}
                     </div>
-                    <div class="my-card-body">
-                        <div class="my-card-tags">${tagPills}</div>
-                        <div class="my-card-date">${dateStr}</div>
-                    </div>
-                    <div class="my-card-actions">
-                        <button class="btn-edit">Edit Tags</button>
-                        <button class="btn-delete">Delete</button>
-                    </div>
+                    <div class="card-tag-strip">${tagPills}</div>
                 </div>
             `);
 
-            card.find(".btn-edit").on("click",   (e) => { e.stopPropagation(); openMyDetail(item); });
-            card.find(".btn-delete").on("click", (e) => { e.stopPropagation(); openDeleteConfirm(item._id); });
+            card.on("click keydown", function (e) {
+                if (e.type === "keydown" && e.key !== "Enter") return;
+                openMyDetail(item);
+            });
 
             $("#myUploadsGrid").append(card);
         });
@@ -500,13 +492,6 @@ function openEditModal(docId, currentTags) {
 
 function closeEditModal() {}
 
-function openDeleteConfirm(docId) {
-    pendingDeleteId = docId;
-    $("#deleteOverlay").addClass("open");
-    document.body.style.overflow = "hidden";
-}
-
-function closeDeleteConfirm() { $("#deleteOverlay").removeClass("open"); document.body.style.overflow = ""; pendingDeleteId = null; }
 
 
 // ── Page init ─────────────────────────────────────────────────────────────────
@@ -516,7 +501,7 @@ $(function () {
     // Escape key closes any open modal
     $(document).on("keydown", function (e) {
         if (e.key !== "Escape") return;
-        closeDetail(); closeUploadModal(); closeEditModal(); closeDeleteConfirm(); closeMyDetail();
+        closeDetail(); closeUploadModal(); closeEditModal(); closeMyDetail();
     });
 
     // ── Upload modal — runs on every authenticated page ───────────────────────
@@ -631,12 +616,6 @@ $(function () {
         loadMyUploads();
 
         // Delegated click — uses _myUploadsMap populated by loadMyUploads
-        $("#myUploadsGrid").on("click keydown", ".my-card-img-wrap", function (e) {
-            if (e.type === "keydown" && e.key !== "Enter") return;
-            const id   = $(this).closest(".my-card").attr("data-id");
-            const item = window._myUploadsMap && window._myUploadsMap[id];
-            if (item) openMyDetail(item);
-        });
 
         // ── Inline tag editing ────────────────────────────────────────────────
         $("#editTagsBtn").on("click", function () {
@@ -669,8 +648,8 @@ $(function () {
                     window._myUploadsMap[docId].tags = json.tags;
                     renderMyDetailTags(json.tags);
                     // Update card tag strip
-                    const newPills = json.tags.map(t => `<span class="my-card-tag">${t}</span>`).join("");
-                    $(`[data-id="${docId}"]`).find(".my-card-tags").html(newPills);
+                    const newPills = json.tags.slice(0, 3).map(t => `<span class="card-tag">${t}</span>`).join("");
+                    $(`[data-id="${docId}"]`).find(".card-tag-strip").html(newPills);
                     $("#editTagsSection").hide();
                 } else { $("#myDetailError").text(json.error || "Save failed.").show(); }
             } catch (err) { console.error(err); $("#myDetailError").text("Network error.").show(); }
@@ -758,22 +737,20 @@ $(function () {
         $("#myDetailOverlay").on("click", function(e){if(e.target===this)closeMyDetail();});
         $("#myDetailClose").on("click", closeMyDetail);
 
-        // Delete confirm
-        $("#deleteCancelBtn").on("click", closeDeleteConfirm);
-        $("#deleteOverlay").on("click", function(e){if(e.target===this)closeDeleteConfirm();});
-
-        $("#deleteConfirmBtn").on("click", async function () {
-            if (!pendingDeleteId) return;
+        $("#deleteUploadBtn").on("click", async function () {
+            const docId = myDetailItem && myDetailItem._id;
+            if (!docId || !window.confirm("Delete this upload permanently? This cannot be undone.")) return;
             try {
-                const res  = await fetch(`/my-uploads/delete/${pendingDeleteId}`, { method: "DELETE" });
+                const res  = await fetch(`/my-uploads/delete/${docId}`, { method: "DELETE" });
                 const json = await res.json();
                 if (res.ok && json.ok) {
-                    $(`[data-id="${pendingDeleteId}"]`).remove();
-                    closeDeleteConfirm();
+                    $(`[data-id="${docId}"]`).remove();
+                    delete window._myUploadsMap[docId];
+                    closeMyDetail();
                     if ($("#myUploadsGrid").children().length === 0)
                         $("#myUploadsStatus").text("You haven't uploaded anything yet.");
-                } else { alert(json.error || "Delete failed."); closeDeleteConfirm(); }
-            } catch (err) { console.error(err); alert("Network error — please try again."); closeDeleteConfirm(); }
+                } else { $("#myDetailError").text(json.error || "Delete failed.").show(); }
+            } catch (err) { console.error(err); $("#myDetailError").text("Network error.").show(); }
         });
     }
 });
