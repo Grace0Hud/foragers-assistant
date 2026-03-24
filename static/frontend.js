@@ -164,8 +164,8 @@ function appendCards(items, gridSelector) {
         let badge = "";
         if (warn) {
             badge = `<span class="road-warning ${warn.level}">${warn.text}</span>`;
-        } else if (item.address_not_found) {
-            badge = `<span class="road-warning addr">address not found</span>`;
+        } else if (hasNoAddress(item)) {
+            badge = `<span class="road-warning addr">no address</span>`;
         }
 
         const card = $(`
@@ -357,8 +357,8 @@ async function loadMyUploads() {
             let warnBadge = "";
             if (warn) {
                 warnBadge = `<span class="road-warning ${warn.level}">${warn.text}</span>`;
-            } else if (item.address_not_found) {
-                warnBadge = `<span class="road-warning addr">address not found</span>`;
+            } else if (hasNoAddress(item)) {
+                warnBadge = `<span class="road-warning addr">no address</span>`;
             }
 
             const card = $(`
@@ -387,6 +387,31 @@ async function loadMyUploads() {
 
 // Current item open in the detail modal — used by inline edit handlers
 let myDetailItem = null;
+let myDetailOriginalValues = null;
+
+function arraysEqual(a = [], b = []) {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function initializeMyDetailEditForm(item) {
+    myDetailOriginalValues = {
+        tags: [...(item.tags || [])],
+        manual_address: item.manual_address || "",
+        location_label: item.location_label || "",
+        location_geo: item.location_geo ? { ...item.location_geo } : null
+    };
+
+    editPills.setTags(item.tags || []);
+    $("#editAddressInput").val(item.manual_address || "");
+    $("#editLocationInput").val(item.location_label || "");
+    $("#editAddressStatus").text("");
+}
+
+function setMyDetailEditMode(isEditing) {
+    $("#myDetailBody").toggleClass("is-editing", isEditing);
+    $("#myDetailError").hide();
+    if (!isEditing) $("#editAddressStatus").text("");
+}
 
 function renderMyDetail(item) {
     myDetailItem = item;
@@ -447,14 +472,18 @@ function renderMyDetail(item) {
         item.uploaded_at ? new Date(item.uploaded_at).toLocaleString() : "Unknown"
     );
 
-    // Collapse any open edit sections
-    $("#editTagsSection, #editAddressSection, #editLocationSection").hide();
-    $("#myDetailError").hide();
+    initializeMyDetailEditForm(item);
+    setMyDetailEditMode(false);
 }
 
 function renderMyDetailTags(tags) {
     const tagsEl = $("#myDetailTags").empty();
     tags.forEach(tag => tagsEl.append(`<span class="detail-tag-pill">${tag}</span>`));
+}
+
+function hasNoAddress(item) {
+    if (!item) return true;
+    return !!item.address_not_found || !item.manual_address;
 }
 
 // Update the road warning / address-not-found badge on a card in-place
@@ -466,8 +495,8 @@ function updateCardBadge(docId, item) {
     let badge = "";
     if (warn) {
         badge = `<span class="road-warning ${warn.level}">${warn.text}</span>`;
-    } else if (item.address_not_found) {
-        badge = `<span class="road-warning addr">address not found</span>`;
+    } else if (hasNoAddress(item)) {
+        badge = `<span class="road-warning addr">no address</span>`;
     }
     if (badge) card.find(".my-card-img-wrap").prepend(badge);
 }
@@ -484,6 +513,7 @@ function closeMyDetail() {
     $("#myDetailOverlay").removeClass("open");
     document.body.style.overflow = "";
     myDetailItem = null;
+    myDetailOriginalValues = null;
 }
 
 function openEditModal(docId, currentTags) {
@@ -618,51 +648,104 @@ $(function () {
         // Delegated click — uses _myUploadsMap populated by loadMyUploads
 
         // ── Inline tag editing ────────────────────────────────────────────────
-        $("#editTagsBtn").on("click", function () {
-            editPills.setTags(myDetailItem ? myDetailItem.tags || [] : []);
-            $("#editTagsSection").show();
-            $("#editTagTextInput").focus();
-        });
-        $("#cancelTagsBtn").on("click", () => $("#editTagsSection").hide());
         $("#editTagPillBox").on("click", () => $("#editTagTextInput").focus());
         $("#editTagTextInput")
             .on("keydown", function(e){ if(e.key==="Enter"){e.preventDefault();editPills.addFromInput();} })
             .on("input",   function(){ if(this.value.includes(","))editPills.addFromInput(); });
 
-        $("#saveTagsBtn").on("click", async function () {
+        $("#editMyUploadBtn").on("click", function () {
+            if (!myDetailItem) return;
+            initializeMyDetailEditForm(myDetailItem);
+            setMyDetailEditMode(true);
+            $("#editTagTextInput").focus();
+        });
+
+        $("#cancelMyUploadEditBtn").on("click", function () {
+            if (!myDetailItem) return;
+            initializeMyDetailEditForm(myDetailItem);
+            setMyDetailEditMode(false);
+        });
+
+        $("#saveMyUploadBtn").on("click", async function () {
             editPills.addFromInput();
-            const tags  = editPills.getTags();
             const docId = myDetailItem && myDetailItem._id;
+            const original = myDetailOriginalValues;
             if (!docId) return;
+            const tags  = editPills.getTags();
             if (tags.length === 0) { $("#myDetailError").text("Please add at least one tag.").show(); return; }
+            const address = sanitizeInput($("#editAddressInput").val().trim());
+            const locLabel = sanitizeInput($("#editLocationInput").val().trim());
+            const tagsChanged = !arraysEqual(tags, original ? original.tags : []);
+            const addressChanged = address !== (original ? original.manual_address : "");
+            const labelChanged = locLabel !== (original ? original.location_label : "");
             $("#myDetailError").hide();
             try {
-                const res  = await fetch(`/my-uploads/edit-tags/${docId}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ tags: tags.join(",") })
-                });
-                const json = await res.json();
-                if (res.ok && json.ok) {
-                    myDetailItem.tags = json.tags;
-                    window._myUploadsMap[docId].tags = json.tags;
-                    renderMyDetailTags(json.tags);
-                    // Update card tag strip
-                    const newPills = json.tags.slice(0, 3).map(t => `<span class="card-tag">${t}</span>`).join("");
-                    $(`[data-id="${docId}"]`).find(".card-tag-strip").html(newPills);
-                    $("#editTagsSection").hide();
-                } else { $("#myDetailError").text(json.error || "Save failed.").show(); }
+                if (tagsChanged) {
+                    const tagsRes  = await fetch(`/my-uploads/edit-tags/${docId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ tags: tags.join(",") })
+                    });
+                    const tagsJson = await tagsRes.json();
+                    if (!tagsRes.ok || !tagsJson.ok) {
+                        $("#myDetailError").text(tagsJson.error || "Save failed.").show();
+                        return;
+                    }
+                    myDetailItem.tags = tagsJson.tags;
+                    window._myUploadsMap[docId].tags = tagsJson.tags;
+                }
+
+                if (addressChanged || labelChanged) {
+                    let lat = original && original.location_geo ? original.location_geo.latitude : null;
+                    let lon = original && original.location_geo ? original.location_geo.longitude : null;
+
+                    if (addressChanged) {
+                        if (address) {
+                            $("#editAddressStatus").text("Looking up addressâ€¦");
+                            const coords = await geocodeAddress(address);
+                            if (coords) {
+                                lat = coords.latitude;
+                                lon = coords.longitude;
+                                $("#editAddressStatus").text(`Found: ${lat}, ${lon}`);
+                            } else {
+                                lat = null;
+                                lon = null;
+                                $("#editAddressStatus").text("Address not found â€” saving without coordinates.");
+                            }
+                        } else {
+                            lat = null;
+                            lon = null;
+                            $("#editAddressStatus").text("");
+                        }
+                    }
+
+                    const locationRes  = await fetch(`/my-uploads/edit-location/${docId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ manual_address: address, location_label: locLabel, latitude: lat, longitude: lon })
+                    });
+                    const locationJson = await locationRes.json();
+                    if (!locationRes.ok || !locationJson.ok) {
+                        $("#myDetailError").text(locationJson.error || "Save failed.").show();
+                        return;
+                    }
+
+                    myDetailItem.manual_address = locationJson.manual_address;
+                    myDetailItem.location_label = locationJson.location_label;
+                    myDetailItem.location_geo = locationJson.location_geo;
+                    myDetailItem.nearest_road = locationJson.nearest_road;
+                    myDetailItem.address_not_found = locationJson.address_not_found;
+                    window._myUploadsMap[docId] = { ...window._myUploadsMap[docId], ...myDetailItem };
+                    updateCardBadge(docId, myDetailItem);
+                }
+
+                const newPills = (myDetailItem.tags || []).slice(0, 3).map(t => `<span class="card-tag">${t}</span>`).join("");
+                $(`[data-id="${docId}"]`).find(".card-tag-strip").html(newPills);
+                renderMyDetail(myDetailItem);
             } catch (err) { console.error(err); $("#myDetailError").text("Network error.").show(); }
         });
 
         // ── Inline address editing ────────────────────────────────────────────
-        $("#editAddressBtn").on("click", function () {
-            $("#editAddressInput").val(myDetailItem ? myDetailItem.manual_address || "" : "");
-            $("#editAddressStatus").text("");
-            $("#editAddressSection").show();
-            $("#editAddressInput").focus();
-        });
-        $("#cancelAddressBtn").on("click", () => $("#editAddressSection").hide());
 
         $("#saveAddressBtn").on("click", async function () {
             const docId   = myDetailItem && myDetailItem._id;

@@ -29,62 +29,44 @@
           <button id="myDetailClose" aria-label="Close">&times;</button>
         </div>
         <div id="myDetailBody">
+          <div class="detail-modal-actions">
+            <button class="detail-edit-btn detail-edit-toggle" id="editMyUploadBtn" type="button">Edit</button>
+          </div>
 
           <!-- Tags row — view + edit toggle -->
           <div class="detail-row" id="myDetailTagsRow">
-            <div class="detail-label">
-              Tags
-              <button class="detail-edit-btn" id="editTagsBtn">Edit</button>
-            </div>
+            <div class="detail-label">Tags</div>
             <div class="detail-tags" id="myDetailTags"></div>
-            <div id="editTagsSection" style="display:none; margin-top:0.6rem;">
+            <div id="editTagsSection" class="detail-edit-section">
               <div class="tag-input-wrapper" id="editTagPillBox">
                 <input type="text" id="editTagTextInput" placeholder="Type a tag and press Enter or comma…">
               </div>
               <p class="tag-hint">Letters and spaces only. Press Enter or comma to add each one.</p>
               <input type="hidden" id="editTagsHidden">
-              <div class="detail-edit-actions">
-                <button class="detail-save-btn" id="saveTagsBtn">Save Tags</button>
-                <button class="detail-cancel-btn" id="cancelTagsBtn">Cancel</button>
-              </div>
             </div>
           </div>
 
           <!-- Address row — view + edit toggle -->
           <div class="detail-row" id="myDetailAddressRow">
-            <div class="detail-label">
-              Address
-              <button class="detail-edit-btn" id="editAddressBtn">Edit</button>
-            </div>
+            <div class="detail-label">Address</div>
             <div class="detail-location-text" id="myDetailAddress"></div>
-            <div id="editAddressSection" style="display:none; margin-top:0.6rem;">
+            <div id="editAddressSection" class="detail-edit-section">
               <input type="text" id="editAddressInput" maxlength="300"
                      placeholder="e.g. 123 Oak Street, Portland, OR">
               <p style="font-size:0.85rem; color:#7D7ABC; margin-top:-0.8rem; margin-bottom:0.8rem;">
                 Coordinates will be looked up automatically from the new address.
               </p>
-              <div class="detail-edit-actions">
-                <button class="detail-save-btn" id="saveAddressBtn">Save Address</button>
-                <button class="detail-cancel-btn" id="cancelAddressBtn">Cancel</button>
-              </div>
               <p id="editAddressStatus" style="font-size:0.85rem; color:#7D7ABC; margin-top:0.4rem;"></p>
             </div>
           </div>
 
           <!-- Location description row — view + edit toggle -->
           <div class="detail-row" id="myDetailLocationLabelRow">
-            <div class="detail-label">
-              Location Description
-              <button class="detail-edit-btn" id="editLocationBtn">Edit</button>
-            </div>
+            <div class="detail-label">Location Description</div>
             <div class="detail-location-text" id="myDetailLocationLabel"></div>
-            <div id="editLocationSection" style="display:none; margin-top:0.6rem;">
+            <div id="editLocationSection" class="detail-edit-section">
               <input type="text" id="editLocationInput" maxlength="200"
                      placeholder="e.g. North trail near Oak Park">
-              <div class="detail-edit-actions">
-                <button class="detail-save-btn" id="saveLocationBtn">Save</button>
-                <button class="detail-cancel-btn" id="cancelLocationBtn">Cancel</button>
-              </div>
             </div>
           </div>
 
@@ -107,6 +89,11 @@
             <div class="detail-label">Delete Upload</div>
             <p class="detail-danger-text">This permanently removes the image and its submission record.</p>
             <button class="detail-delete-btn" id="deleteUploadBtn" type="button">Delete Upload</button>
+          </div>
+
+          <div class="detail-edit-actions detail-edit-footer" id="myDetailEditActions">
+            <button class="detail-save-btn" id="saveMyUploadBtn" type="button">Save Changes</button>
+            <button class="detail-cancel-btn" id="cancelMyUploadEditBtn" type="button">Cancel</button>
           </div>
 
           <div id="myDetailError" class="error-message" style="display:none;"></div>

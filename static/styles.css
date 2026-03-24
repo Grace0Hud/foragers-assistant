@@ -581,6 +581,12 @@ button[type="submit"]:hover {
 
 .detail-row { margin-bottom: 1rem; }
 
+.detail-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
 .detail-label {
   font-weight: 800;
   font-size: 0.85rem;
@@ -671,9 +677,9 @@ button[type="submit"]:hover {
 
 /* ── Detail modal inline edit controls ──────────────────────────────────── */
 .detail-edit-btn {
-  font-size: 0.75rem;
+  font-size: 0.9rem;
   font-weight: 800;
-  padding: 0.15rem 0.6rem;
+  padding: 0.4rem 0.9rem;
   border-radius: 999px;
   border: none;
   background: var(--secondary_dark);
@@ -697,6 +703,31 @@ button[type="submit"]:hover {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+.detail-edit-section {
+  display: none;
+  margin-top: 0.6rem;
+}
+
+.detail-edit-footer {
+  display: none;
+  justify-content: flex-end;
+}
+
+#myDetailBody.is-editing .detail-edit-section,
+#myDetailBody.is-editing .detail-edit-footer {
+  display: flex;
+}
+
+#myDetailBody.is-editing #editTagsSection,
+#myDetailBody.is-editing #editAddressSection,
+#myDetailBody.is-editing #editLocationSection {
+  display: block;
+}
+
+#myDetailBody.is-editing .detail-edit-toggle {
+  display: none;
 }
 
 .detail-save-btn,

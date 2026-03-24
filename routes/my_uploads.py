@@ -110,7 +110,7 @@ def edit_location(doc_id):
     # Geocode the new address if one was provided
     location_geo      = None
     nearest_road      = None
-    address_not_found = False
+    address_not_found = not manual_address
 
     if manual_address:
         lat = data.get("latitude")

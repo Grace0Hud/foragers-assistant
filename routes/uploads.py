@@ -51,7 +51,7 @@ def upload_image():
 
     # Resolve coordinates — EXIF first, then browser/address submission
     location_data = extract_exif_gps(filepath)
-    address_not_found = False
+    address_not_found = not manual_address
 
     if location_data is None:
         raw_lat = request.form.get("latitude",  "").strip()
