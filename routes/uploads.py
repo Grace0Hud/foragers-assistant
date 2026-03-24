@@ -51,7 +51,7 @@ def upload_image():
 
     # Resolve coordinates — EXIF first, then browser/address submission
     location_data = extract_exif_gps(filepath)
-    address_not_found = not manual_address
+    address_not_found = False
 
     if location_data is None:
         raw_lat = request.form.get("latitude",  "").strip()
@@ -73,6 +73,8 @@ def upload_image():
         # Explicit flag set by JS when Nominatim returned no results
         if request.form.get("address_lookup_failed", "").strip() == "1":
             address_not_found = True
+
+    address_not_found = location_data is None
 
     print(f"DEBUG form keys: {list(request.form.keys())}")
     print(f"DEBUG address_lookup_failed: '{request.form.get('address_lookup_failed', 'NOT PRESENT')}'")

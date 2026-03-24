@@ -110,7 +110,7 @@ def edit_location(doc_id):
     # Geocode the new address if one was provided
     location_geo      = None
     nearest_road      = None
-    address_not_found = not manual_address
+    address_not_found = False
 
     if manual_address:
         lat = data.get("latitude")
@@ -132,6 +132,8 @@ def edit_location(doc_id):
                 )
             except Exception as e:
                 print(f"Road lookup failed: {e}")
+
+    address_not_found = location_geo is None
 
     updates = {
         "manual_address":    manual_address,

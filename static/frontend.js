@@ -483,7 +483,8 @@ function renderMyDetailTags(tags) {
 
 function hasNoAddress(item) {
     if (!item) return true;
-    return !!item.address_not_found || !item.manual_address;
+    const geo = item.location_geo;
+    return !!item.address_not_found || !geo || geo.latitude == null || geo.longitude == null;
 }
 
 // Update the road warning / address-not-found badge on a card in-place
