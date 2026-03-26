@@ -10,3 +10,4 @@ class Config:
     SSL_CERT     = os.getenv("SSL_CERT")
     SSL_KEY      = os.getenv("SSL_KEY")
     FLASK_ENV    = os.getenv("FLASK_ENV", "development")
+    PHOTO_COLLECTION = "test-photos" if FLASK_ENV == "dev" else "user-photos"

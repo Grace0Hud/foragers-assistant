@@ -4,7 +4,7 @@ from utils.config import Config
 client = MongoClient(Config.MONGODB_URI)
 _db = client["user-data"]
 
-photo_collection = _db["user-photos"]
+photo_collection = _db[Config.PHOTO_COLLECTION]
 user_collection  = _db["user-login"]
 
 
