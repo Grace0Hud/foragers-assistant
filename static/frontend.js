@@ -343,6 +343,7 @@ async function loadMyUploads() {
         const res  = await fetch("/my-uploads/feed");
         const data = await res.json();
 
+        $("#myUploadsGrid").empty();
         $("#myUploadsStatus").text(data.images.length === 0 ? "You haven't uploaded anything yet." : "");
 
         // Keep a lookup map so other handlers can find the full item by _id
@@ -614,6 +615,9 @@ $(function () {
                         $("#resultsGrid").empty(); $("#searchStatus").text("");
                         activeTags = []; renderActiveTags();
                         await loadFeedPage();
+                    }
+                    if (document.getElementById("myUploadsGrid")) {
+                        await loadMyUploads();
                     }
                 } else { $("#uploadError").text(json.error || "Upload failed.").show(); }
             } catch (err) { console.error(err); $("#uploadError").text("Network error — please try again.").show(); }
