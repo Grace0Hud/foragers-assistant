@@ -11,3 +11,4 @@ class Config:
     SSL_KEY      = os.getenv("SSL_KEY")
     FLASK_ENV    = os.getenv("FLASK_ENV", "development")
     PHOTO_COLLECTION = "test-photos" if FLASK_ENV == "dev" else "user-photos"
+    GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "")

@@ -17,6 +17,14 @@ def create_app() -> Flask:
     # Ensure the uploads folder exists
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
+    # Inject Google Analytics ID into templates (production only)
+    @app.context_processor
+    def inject_globals():
+        in_production = Config.FLASK_ENV == "production"
+        return {
+            "ga_measurement_id": Config.GA_MEASUREMENT_ID if in_production else ""
+        }
+
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(gallery_bp)
