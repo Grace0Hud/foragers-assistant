@@ -20,10 +20,8 @@ PHOTO_PROJECTION = {
 
 
 @gallery_bp.route("/")
-@login_required
 def start_index():
-    from flask import redirect, url_for
-    return redirect(url_for("gallery.get_gallery"))
+    return render_template("help.html", username=session.get("username"))
 
 
 @gallery_bp.route("/gallery")
@@ -33,9 +31,8 @@ def get_gallery():
 
 
 @gallery_bp.route("/help")
-@login_required
 def help_page():
-    return render_template("help.html", username=session["username"])
+    return render_template("help.html", username=session.get("username"))
 
 
 @gallery_bp.route("/gallery/feed")

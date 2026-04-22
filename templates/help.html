@@ -5,6 +5,9 @@
     <title>Forager's Assistant — Help</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    {% if username %}
+    <script defer src="{{ url_for('static', filename='frontend.js') }}"></script>
+    {% endif %}
     {% if ga_measurement_id %}
     <script async src="https://www.googletagmanager.com/gtag/js?id={{ ga_measurement_id }}"></script>
     <script>
@@ -18,11 +21,17 @@
   <body>
     <h1>Forager's Assistant</h1>
     <nav>
+      {% if username %}
       <a href="{{ url_for('gallery.get_gallery') }}">Gallery</a>
       <a href="{{ url_for('my_uploads.my_uploads_page') }}">My Uploads</a>
+      {% endif %}
       <a href="{{ url_for('gallery.help_page') }}">Help</a>
+      {% if username %}
       <button id="navUploadBtn" aria-label="Upload new foragable">&#43; Upload</button>
-      <a href="{{ url_for('auth.logout') }}" class="nav-logout">Sign Out ({{ username }})</a>
+      <a href="{{ url_for('auth.logout') }}" class="nav-auth">Sign Out ({{ username }})</a>
+      {% else %}
+      <a href="{{ url_for('auth.signin_page') }}" class="nav-auth">Log In</a>
+      {% endif %}
     </nav>
 
     <h2>Help &amp; Guide</h2>
@@ -165,6 +174,7 @@
     </div>
 
     <!-- ── Upload modal ───────────────────────────────────────────────────── -->
+    {% if username %}
     <div id="uploadOverlay" aria-modal="true" role="dialog" aria-label="Upload foragable">
       <div id="uploadPanel">
         <button id="uploadPanelClose" aria-label="Close">&times;</button>
@@ -218,5 +228,6 @@
         </form>
       </div>
     </div>
+    {% endif %}
   </body>
 </html>

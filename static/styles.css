@@ -81,12 +81,12 @@ nav a:hover {
   transform: translateY(-2px);
 }
 
-nav a.nav-logout {
+nav a.nav-auth {
   margin-left: auto;
   background: var(--tertiary);
 }
 
-nav a.nav-logout:hover {
+nav a.nav-auth:hover {
   background: var(--secondary_dark);
 }
 
@@ -963,7 +963,7 @@ button[type="submit"]:hover {
     text-align: center;
   }
 
-  nav a.nav-logout {
+  nav a.nav-auth {
     margin-left: 0;
   }
 
@@ -1020,7 +1020,7 @@ button[type="submit"]:hover {
     padding: 0.75rem 1rem;
   }
 
-  nav a.nav-logout {
+  nav a.nav-auth {
     margin-left: 0;
   }
 
