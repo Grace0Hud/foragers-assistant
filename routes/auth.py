@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, session, redirect, url_for
 from pymongo.errors import DuplicateKeyError
 from werkzeug.security import check_password_hash, generate_password_hash
+from utils.analytics import hash_analytics_user_id
 from utils.db import user_collection
 from utils.sanitize import sanitize_username, sanitize_password
 
@@ -31,6 +32,7 @@ def user_login():
         return render_template("signin.html", error="Invalid username or password")
 
     session["username"] = username
+    session["ga_user_id"] = hash_analytics_user_id(user["_id"])
     session.modified = True
     return redirect(url_for("gallery.get_gallery"))
 
@@ -71,7 +73,7 @@ def user_signup():
                                previous_username=username)
 
     try:
-        user_collection.insert_one(
+        result = user_collection.insert_one(
             {"username": username, "password": generate_password_hash(password)}
         )
     except DuplicateKeyError:
@@ -79,5 +81,6 @@ def user_signup():
                                previous_username=username)
 
     session["username"] = username
+    session["ga_user_id"] = hash_analytics_user_id(result.inserted_id)
     session.modified = True
     return redirect(url_for("gallery.get_gallery"))

@@ -1,10 +1,12 @@
 import os
-from flask import Flask
+from flask import Flask, session
 from utils.config import Config
 from routes.auth import auth_bp
 from routes.gallery import gallery_bp
 from routes.uploads import uploads_bp
 from routes.my_uploads import my_uploads_bp
+from utils.analytics import hash_analytics_user_id
+from utils.db import user_collection
 
 
 def create_app() -> Flask:
@@ -21,8 +23,21 @@ def create_app() -> Flask:
     @app.context_processor
     def inject_globals():
         in_production = Config.FLASK_ENV == "production"
+        ga_user_id = None
+
+        if "username" in session:
+            ga_user_id = session.get("ga_user_id")
+            if not ga_user_id:
+                user = user_collection.find_one({"username": session["username"]}, {"_id": 1})
+                if user is not None:
+                    ga_user_id = hash_analytics_user_id(user["_id"])
+                    session["ga_user_id"] = ga_user_id
+                    session.modified = True
+
         return {
-            "ga_measurement_id": Config.GA_MEASUREMENT_ID if in_production else ""
+            "ga_measurement_id": Config.GA_MEASUREMENT_ID if in_production else "",
+            "ga_logged_in": "username" in session,
+            "ga_user_id": ga_user_id,
         }
 
     # Register blueprints

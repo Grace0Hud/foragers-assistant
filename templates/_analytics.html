@@ -1,0 +1,14 @@
+{% if ga_measurement_id %}
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ ga_measurement_id }}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
+  gtag('js', new Date());
+  gtag('set', 'user_properties', {
+    logged_in: {{ ('true' if ga_logged_in else 'false')|tojson }}
+  });
+  gtag('config', '{{ ga_measurement_id }}', {
+    user_id: {{ ga_user_id|tojson }}
+  });
+</script>
+{% endif %}
