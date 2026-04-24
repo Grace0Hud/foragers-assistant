@@ -2,6 +2,7 @@ from flask import (Blueprint, request, jsonify, session,
                    send_from_directory, current_app)
 from werkzeug.utils import secure_filename
 from datetime import datetime, timezone
+from utils.audit import log_user_activity
 from utils.db import photo_collection
 from utils.decorators import login_required
 from utils.sanitize import sanitize_tags, sanitize_location_label, sanitize_coordinate
@@ -22,6 +23,7 @@ def uploaded_file(filename):
 @login_required
 def upload_image():
     if "image" not in request.files:
+        log_user_activity("upload_failed", target_type="photo", metadata={"reason": "missing_file_part"}, success=False)
         return jsonify({"error": "No file part"}), 400
 
     file = request.files["image"]
@@ -29,11 +31,13 @@ def upload_image():
     try:
         tag_list = sanitize_tags(request.form.get("tags", ""))
     except ValueError as e:
+        log_user_activity("upload_failed", target_type="photo", metadata={"reason": "invalid_tags"}, success=False)
         return jsonify({"error": str(e)}), 400
 
     try:
         location_label = sanitize_location_label(request.form.get("location_label", ""))
     except ValueError as e:
+        log_user_activity("upload_failed", target_type="photo", metadata={"reason": "invalid_location_label"}, success=False)
         return jsonify({"error": str(e)}), 400
 
     try:
@@ -42,6 +46,7 @@ def upload_image():
         manual_address = ""
 
     if file.filename == "":
+        log_user_activity("upload_failed", target_type="photo", metadata={"reason": "empty_filename"}, success=False)
         return jsonify({"error": "No selected file"}), 400
 
     # Save file
@@ -104,6 +109,21 @@ def upload_image():
     }
 
     result = photo_collection.insert_one(doc)
+    log_user_activity(
+        "upload_created",
+        target_type="photo",
+        target_id=result.inserted_id,
+        metadata={
+            "photo_id": str(result.inserted_id),
+            "tag_count": len(tag_list),
+            "has_location_label": bool(location_label),
+            "has_manual_address": bool(manual_address),
+            "has_location_geo": location_data is not None,
+            "geo_source": location_data.get("source") if location_data else None,
+            "address_not_found": address_not_found,
+            "has_nearest_road": nearest_road is not None,
+        },
+    )
     print(f"Uploaded {filename}")
     print(f"  tags:         {tag_list}")
     print(f"  location_geo: {location_data}")

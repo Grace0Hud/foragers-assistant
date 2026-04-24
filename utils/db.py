@@ -7,6 +7,7 @@ _db = client["user-data"]
 
 photo_collection = _db[Config.PHOTO_COLLECTION]
 user_collection  = _db["user-login"]
+audit_collection = _db["user-activity"]
 
 try:
     user_collection.create_index([("username", ASCENDING)], unique=True, name="unique_username")

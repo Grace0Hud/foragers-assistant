@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify, session
+from utils.audit import log_user_activity
 from utils.db import photo_collection, serialize_doc
 from utils.decorators import login_required
 from utils.sanitize import sanitize_tag
@@ -69,6 +70,7 @@ def api_feed():
 def api_search():
     raw_tags = request.args.getlist("tags")
     if not raw_tags:
+        log_user_activity("search_failed", target_type="gallery", metadata={"reason": "missing_tags"}, success=False)
         return jsonify({"error": "At least one tag is required"}), 400
 
     clean_tags = []
@@ -76,6 +78,7 @@ def api_search():
         try:
             clean_tags.append(sanitize_tag(raw.lower()))
         except ValueError:
+            log_user_activity("search_failed", target_type="gallery", metadata={"reason": "invalid_tag"}, success=False)
             return jsonify({"error": f"Invalid tag: {raw}"}), 400
 
     docs = [
@@ -84,4 +87,9 @@ def api_search():
             .find({"tags": {"$all": clean_tags}}, PHOTO_PROJECTION)
             .sort("uploaded_at", -1)
     ]
+    log_user_activity(
+        "search",
+        target_type="gallery",
+        metadata={"tag_count": len(clean_tags), "result_count": len(docs)},
+    )
     return jsonify({"tags": clean_tags, "images": docs})

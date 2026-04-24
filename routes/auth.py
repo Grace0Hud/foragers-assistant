@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, session, redirect, url_fo
 from pymongo.errors import DuplicateKeyError
 from werkzeug.security import check_password_hash, generate_password_hash
 from utils.analytics import hash_analytics_user_id
+from utils.audit import log_user_activity
 from utils.db import user_collection
 from utils.sanitize import sanitize_username, sanitize_password
 
@@ -20,25 +21,30 @@ def user_login():
     try:
         username = sanitize_username(request.form.get("username", ""))
     except ValueError as e:
+        log_user_activity("login_failed", metadata={"reason": "invalid_username_input"}, success=False)
         return render_template("signin.html", error=str(e))
 
     try:
         password = sanitize_password(request.form.get("password", ""))
     except ValueError as e:
+        log_user_activity("login_failed", username=username, metadata={"reason": "invalid_password_input"}, success=False)
         return render_template("signin.html", error=str(e))
 
     user = user_collection.find_one({"username": username})
     if user is None or not check_password_hash(user.get("password", ""), password):
+        log_user_activity("login_failed", username=username, metadata={"reason": "invalid_credentials"}, success=False)
         return render_template("signin.html", error="Invalid username or password")
 
     session["username"] = username
     session["ga_user_id"] = hash_analytics_user_id(user["_id"])
     session.modified = True
+    log_user_activity("login")
     return redirect(url_for("gallery.get_gallery"))
 
 
 @auth_bp.route("/logout")
 def logout():
+    log_user_activity("logout")
     session.clear()
     return redirect(url_for("gallery.help_page"))
 
@@ -55,20 +61,24 @@ def user_signup():
     try:
         username = sanitize_username(request.form.get("username", ""))
     except ValueError as e:
+        log_user_activity("signup_failed", metadata={"reason": "invalid_username_input"}, success=False)
         return render_template("signup.html", error=str(e),
                                previous_username=request.form.get("username", ""))
 
     try:
         password = sanitize_password(request.form.get("password", ""))
     except ValueError as e:
+        log_user_activity("signup_failed", username=username, metadata={"reason": "invalid_password_input"}, success=False)
         return render_template("signup.html", error=str(e),
                                previous_username=username)
 
     if password != request.form.get("confirm_password", ""):
+        log_user_activity("signup_failed", username=username, metadata={"reason": "password_mismatch"}, success=False)
         return render_template("signup.html", error="Passwords do not match.",
                                previous_username=username)
 
     if user_collection.find_one({"username": username}):
+        log_user_activity("signup_failed", username=username, metadata={"reason": "username_taken"}, success=False)
         return render_template("signup.html", error="That username is already taken.",
                                previous_username=username)
 
@@ -77,10 +87,12 @@ def user_signup():
             {"username": username, "password": generate_password_hash(password)}
         )
     except DuplicateKeyError:
+        log_user_activity("signup_failed", username=username, metadata={"reason": "username_taken_race"}, success=False)
         return render_template("signup.html", error="That username is already taken.",
                                previous_username=username)
 
     session["username"] = username
     session["ga_user_id"] = hash_analytics_user_id(result.inserted_id)
     session.modified = True
+    log_user_activity("sign_up")
     return redirect(url_for("gallery.get_gallery"))
