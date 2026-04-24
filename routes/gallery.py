@@ -2,11 +2,12 @@ from flask import Blueprint, render_template, request, jsonify, session
 from utils.audit import log_user_activity
 from utils.db import photo_collection, serialize_doc
 from utils.decorators import login_required
-from utils.emailer import bug_report_email_enabled, send_bug_report_email
+from utils.emailer import bug_report_email_enabled, send_abuse_report_email, send_bug_report_email
 from utils.sanitize import (
     sanitize_issue_description,
     sanitize_issue_subject,
     sanitize_optional_email,
+    parse_object_id,
     sanitize_tag,
 )
 
@@ -14,7 +15,7 @@ gallery_bp = Blueprint("gallery", __name__)
 
 # Shared projection for all photo queries
 PHOTO_PROJECTION = {
-    "_id":               0,
+    "_id":               1,
     "image":             1,
     "tags":              1,
     "location_label":    1,
@@ -22,6 +23,7 @@ PHOTO_PROJECTION = {
     "location_geo":      1,
     "nearest_road":      1,
     "address_not_found": 1,
+    "uploaded_by":       1,
     "uploaded_at":       1,
 }
 
@@ -162,3 +164,84 @@ def api_search():
         metadata={"tag_count": len(clean_tags), "result_count": len(docs)},
     )
     return jsonify({"tags": clean_tags, "images": docs})
+
+
+@gallery_bp.route("/gallery/report-abuse", methods=["POST"])
+@login_required
+def report_abuse():
+    data = request.get_json(silent=True) or {}
+    raw_post_id = data.get("post_id", "")
+    raw_reason = data.get("reason", "")
+
+    oid = parse_object_id(raw_post_id)
+    if not oid:
+        log_user_activity(
+            "abuse_report_failed",
+            target_type="photo",
+            target_id=raw_post_id,
+            metadata={"reason": "invalid_post_id"},
+            success=False,
+        )
+        return jsonify({"error": "Invalid post ID"}), 400
+
+    try:
+        reason = sanitize_issue_description(raw_reason)
+    except ValueError as exc:
+        log_user_activity(
+            "abuse_report_failed",
+            target_type="photo",
+            target_id=raw_post_id,
+            metadata={"reason": "invalid_description"},
+            success=False,
+        )
+        return jsonify({"error": str(exc)}), 400
+
+    post = photo_collection.find_one(
+        {"_id": oid},
+        {
+            "_id": 1,
+            "uploaded_by": 1,
+            "image": 1,
+            "tags": 1,
+            "uploaded_at": 1,
+            "location_label": 1,
+        },
+    )
+    if not post:
+        log_user_activity(
+            "abuse_report_failed",
+            target_type="photo",
+            target_id=raw_post_id,
+            metadata={"reason": "post_not_found"},
+            success=False,
+        )
+        return jsonify({"error": "Post not found"}), 404
+
+    try:
+        send_abuse_report_email(
+            reporter_username=session["username"],
+            post_id=str(post["_id"]),
+            reason=reason,
+            uploader_username=post.get("uploaded_by", ""),
+            image_name=post.get("image", ""),
+            tags=post.get("tags", []),
+            uploaded_at=post.get("uploaded_at").isoformat() if post.get("uploaded_at") else "",
+            location_label=post.get("location_label", ""),
+        )
+    except Exception:
+        log_user_activity(
+            "abuse_report_failed",
+            target_type="photo",
+            target_id=str(post["_id"]),
+            metadata={"reason": "email_send_failed"},
+            success=False,
+        )
+        return jsonify({"error": "Abuse report could not be sent right now. Please try again later."}), 500
+
+    log_user_activity(
+        "abuse_report_submitted",
+        target_type="photo",
+        target_id=str(post["_id"]),
+        metadata={"reported_user": post.get("uploaded_by", "")},
+    )
+    return jsonify({"ok": True})

@@ -128,6 +128,14 @@
             <div class="detail-label">Uploaded at</div>
             <div class="detail-location-text" id="detailUploadedAt"></div>
           </div>
+          <div class="detail-row detail-danger-row">
+            <div class="detail-label">Report Abuse</div>
+            <p class="detail-danger-text">Report spam, unsafe content, or other abusive submissions.</p>
+            <textarea id="detailAbuseReason" rows="4" maxlength="4000" hidden
+                      placeholder="Tell us what is wrong with this post."></textarea>
+            <button class="detail-delete-btn" id="reportAbuseBtn" type="button">Report Post</button>
+            <div id="detailAbuseMessage" class="helper-text"></div>
+          </div>
         </div>
       </div>
     </div>

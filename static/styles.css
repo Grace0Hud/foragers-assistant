@@ -27,9 +27,8 @@ body {
   background:
     linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)),
     url("/static/images/background.webp");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-position: top left;
+  background-repeat: repeat;
   min-height: 100vh;
   color: var(--dark);
   margin: 0;

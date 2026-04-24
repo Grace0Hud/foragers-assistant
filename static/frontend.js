@@ -200,6 +200,7 @@ function initInfiniteScroll() {
 
 function openDetail(item) {
     const activeTagSet = new Set(activeTags);
+    $("#detailOverlay").data("postId", item._id || "");
     $("#detailImg").attr("src", `/uploads/${encodeURIComponent(item.image)}`).attr("alt", (item.tags || []).join(", "));
 
     const tagsEl = $("#detailTags").empty();
@@ -235,6 +236,11 @@ function openDetail(item) {
 
     if (item.uploaded_at) $("#detailUploadedAt").text(new Date(item.uploaded_at).toLocaleString());
     else $("#detailUploadedAt").text("Unknown");
+
+    $("#detailAbuseReason").val("");
+    $("#detailAbuseReason").prop("hidden", true);
+    $("#reportAbuseBtn").text("Report Post");
+    $("#detailAbuseMessage").text("");
 
     $("#detailOverlay").addClass("open");
     document.body.style.overflow = "hidden";
@@ -789,6 +795,49 @@ $(function () {
 
         $("#detailOverlay").on("click", function(e){if(e.target===this)closeDetail();});
         $("#detailClose").on("click", closeDetail);
+        $("#reportAbuseBtn").on("click", async function () {
+            const postId = $("#detailOverlay").data("postId");
+            const reasonField = $("#detailAbuseReason");
+            if (reasonField.prop("hidden")) {
+                reasonField.prop("hidden", false).focus();
+                $("#reportAbuseBtn").text("Send Abuse Report");
+                $("#detailAbuseMessage").text("Please tell us why this post should be reviewed.");
+                return;
+            }
+            const reason = sanitizeInput($("#detailAbuseReason").val());
+            if (!postId) {
+                $("#detailAbuseMessage").text("Post details are missing.");
+                return;
+            }
+            if (!reason) {
+                $("#detailAbuseMessage").text("Please explain why you are reporting this post.");
+                return;
+            }
+
+            $("#detailAbuseMessage").text("Sending report...");
+            $("#reportAbuseBtn").prop("disabled", true);
+            try {
+                const res = await fetch("/gallery/report-abuse", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ post_id: postId, reason }),
+                });
+                const json = await res.json();
+                if (res.ok && json.ok) {
+                    $("#detailAbuseReason").val("");
+                    $("#detailAbuseReason").prop("hidden", true);
+                    $("#reportAbuseBtn").text("Report Post");
+                    $("#detailAbuseMessage").text("Report sent. Thank you.");
+                } else {
+                    $("#detailAbuseMessage").text(json.error || "Could not send the report.");
+                }
+            } catch (err) {
+                console.error(err);
+                $("#detailAbuseMessage").text("Network error. Please try again.");
+            } finally {
+                $("#reportAbuseBtn").prop("disabled", false);
+            }
+        });
     }
 
     // ── My Uploads page ───────────────────────────────────────────────────────
