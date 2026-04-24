@@ -171,6 +171,35 @@ button[type="submit"]:hover {
   box-shadow: 0 25px 50px rgba(0,0,0,0.35);
 }
 
+[hidden] {
+  display: none !important;
+}
+
+button[disabled],
+input[disabled] {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.secondary-action-btn {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 2px solid rgba(48, 54, 47, 0.16);
+  font-weight: 800;
+  font-size: 0.95rem;
+  cursor: pointer;
+  background: #f5efe5;
+  color: var(--dark);
+  box-shadow: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.secondary-action-btn:hover {
+  background: #efe3d2;
+  border-color: rgba(48, 54, 47, 0.26);
+}
+
 .error-message {
   background: var(--tertiary);
   color: white;
@@ -773,6 +802,51 @@ button[type="submit"]:hover {
 }
 
 .detail-cancel-btn:hover { background: #ddd; transform: none; box-shadow: none; }
+
+.async-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0.8rem 0 0.9rem;
+  font-weight: 700;
+  color: var(--dark);
+}
+
+.loading-spinner {
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 3px solid rgba(48, 54, 47, 0.16);
+  border-top-color: var(--secondary_dark);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  flex: 0 0 auto;
+}
+
+.async-cancel-btn {
+  margin-top: 0.15rem;
+}
+
+#uploadPanel.is-busy {
+  opacity: 0.72;
+}
+
+#uploadPanel.is-busy #uploadLoadingState,
+#uploadPanel.is-busy #uploadCancelRequestBtn {
+  opacity: 1;
+}
+
+#myDetailLoadingState {
+  margin-top: 0.25rem;
+}
+
+#cancelMyDetailRequestBtn {
+  width: fit-content;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 
 .detail-danger-row {
   padding-top: 0.25rem;

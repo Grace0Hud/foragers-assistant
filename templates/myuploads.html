@@ -98,6 +98,13 @@
             <button class="detail-cancel-btn" id="cancelMyUploadEditBtn" type="button">Cancel</button>
           </div>
 
+          <div id="myDetailLoadingState" class="async-loading" hidden>
+            <span class="loading-spinner" aria-hidden="true"></span>
+            <span id="myDetailLoadingText">Saving your changes...</span>
+          </div>
+          <button class="detail-cancel-btn async-cancel-btn" id="cancelMyDetailRequestBtn" type="button" hidden>
+            Cancel Request
+          </button>
           <div id="myDetailError" class="error-message" style="display:none;"></div>
         </div>
       </div>
@@ -151,6 +158,13 @@
             <input type="text" name="location_label" id="location_label"
                    maxlength="200" placeholder="e.g. North trail near Oak Park">
           </p>
+          <div id="uploadLoadingState" class="async-loading" hidden>
+            <span class="loading-spinner" aria-hidden="true"></span>
+            <span id="uploadLoadingText">Uploading your post...</span>
+          </div>
+          <button id="uploadCancelRequestBtn" class="secondary-action-btn async-cancel-btn" type="button" hidden>
+            Cancel Upload
+          </button>
           <div id="uploadError" style="display:none;" class="error-message"></div>
           <button type="submit">Upload</button>
         </form>

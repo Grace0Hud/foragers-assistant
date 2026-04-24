@@ -246,6 +246,15 @@ function closeDetail() { $("#detailOverlay").removeClass("open"); document.body.
 // ── Upload modal ──────────────────────────────────────────────────────────────
 
 let exifCoords = null;
+const SLOW_ACTION_DELAY_MS = 8000;
+let uploadBusy = false;
+let uploadAbortController = null;
+let uploadSlowActionTimer = null;
+let uploadCanceled = false;
+let myDetailBusy = false;
+let myDetailAbortController = null;
+let myDetailSlowActionTimer = null;
+let myDetailCanceled = false;
 
 function openUploadModal() {
     uploadPills.reset();
@@ -257,24 +266,66 @@ function openUploadModal() {
     $("#manualLocationSection").hide();
     $("#locModeAuto").prop("checked", true);
     $("#uploadError").hide();
+    setUploadBusyState(false);
     exifCoords = null;
     $("#uploadOverlay").addClass("open");
     document.body.style.overflow = "hidden";
 }
 
-function closeUploadModal() { $("#uploadOverlay").removeClass("open"); document.body.style.overflow = ""; }
+function closeUploadModal() {
+    if (uploadBusy) return;
+    $("#uploadOverlay").removeClass("open");
+    document.body.style.overflow = "";
+}
+
+function setUploadBusyState(isBusy, loadingText = "Uploading your post...") {
+    uploadBusy = isBusy;
+    $("#uploadPanel").toggleClass("is-busy", isBusy);
+    $("#uploadOverlay").toggleClass("is-busy", isBusy);
+    $("#uploadForm").find("input, button").prop("disabled", isBusy);
+    $("#uploadPanelClose").prop("disabled", isBusy);
+    $("#uploadLoadingText").text(loadingText);
+    $("#uploadLoadingState").prop("hidden", !isBusy);
+    $("#uploadCancelRequestBtn").prop("hidden", true).prop("disabled", !isBusy);
+}
+
+function startUploadSlowActionTimer() {
+    clearTimeout(uploadSlowActionTimer);
+    uploadSlowActionTimer = window.setTimeout(() => {
+        if (!uploadBusy) return;
+        $("#uploadLoadingText").text("This is taking longer than expected. You can keep waiting or cancel.");
+        $("#uploadCancelRequestBtn").prop("hidden", false).prop("disabled", false);
+    }, SLOW_ACTION_DELAY_MS);
+}
+
+function stopUploadSlowActionTimer() {
+    clearTimeout(uploadSlowActionTimer);
+    uploadSlowActionTimer = null;
+}
+
+function cancelUploadAction() {
+    uploadCanceled = true;
+    if (uploadAbortController) uploadAbortController.abort();
+    stopUploadSlowActionTimer();
+    setUploadBusyState(false);
+    $("#uploadError").text("Upload canceled.").show();
+}
 
 
 // ── Address geocoding ─────────────────────────────────────────────────────────
 
-async function geocodeAddress(address) {
+async function geocodeAddress(address, options = {}) {
     try {
         const res  = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`,
-            { headers: { "Accept-Language": "en", "User-Agent": "ForagersAssistant/1.0" } });
+            {
+                headers: { "Accept-Language": "en", "User-Agent": "ForagersAssistant/1.0" },
+                signal: options.signal,
+            });
         const data = await res.json();
         if (data && data.length > 0)
             return { latitude: parseFloat(data[0].lat).toFixed(7), longitude: parseFloat(data[0].lon).toFixed(7) };
     } catch (err) {
+        if (err && err.name === "AbortError") throw err;
         console.error("Geocoding failed:", err);
     }
     return null;
@@ -512,10 +563,42 @@ function openMyDetail(item) {
 }
 
 function closeMyDetail() {
+    if (myDetailBusy) return;
     $("#myDetailOverlay").removeClass("open");
     document.body.style.overflow = "";
     myDetailItem = null;
     myDetailOriginalValues = null;
+}
+
+function setMyDetailBusyState(isBusy, loadingText = "Saving your changes...") {
+    myDetailBusy = isBusy;
+    $("#myDetailBody").find("input, button").prop("disabled", isBusy);
+    $("#myDetailClose").prop("disabled", isBusy);
+    $("#myDetailLoadingText").text(loadingText);
+    $("#myDetailLoadingState").prop("hidden", !isBusy);
+    $("#cancelMyDetailRequestBtn").prop("hidden", true).prop("disabled", !isBusy);
+}
+
+function startMyDetailSlowActionTimer() {
+    clearTimeout(myDetailSlowActionTimer);
+    myDetailSlowActionTimer = window.setTimeout(() => {
+        if (!myDetailBusy) return;
+        $("#myDetailLoadingText").text("This is taking longer than expected. You can keep waiting or cancel.");
+        $("#cancelMyDetailRequestBtn").prop("hidden", false).prop("disabled", false);
+    }, SLOW_ACTION_DELAY_MS);
+}
+
+function stopMyDetailSlowActionTimer() {
+    clearTimeout(myDetailSlowActionTimer);
+    myDetailSlowActionTimer = null;
+}
+
+function cancelMyDetailAction() {
+    myDetailCanceled = true;
+    if (myDetailAbortController) myDetailAbortController.abort();
+    stopMyDetailSlowActionTimer();
+    setMyDetailBusyState(false);
+    $("#myDetailError").text("Save canceled.").show();
 }
 
 function openEditModal(docId, currentTags) {
@@ -542,6 +625,7 @@ $(function () {
         $("#navUploadBtn").on("click", openUploadModal);
         $("#uploadOverlay").on("click", function(e){if(e.target===this)closeUploadModal();});
         $("#uploadPanelClose").on("click", closeUploadModal);
+        $("#uploadCancelRequestBtn").on("click", cancelUploadAction);
 
         $("input[name='location_mode']").on("change", function () {
             if (this.value === "auto") { $("#autoLocationSection").show(); $("#manualLocationSection").hide(); }
@@ -568,46 +652,97 @@ $(function () {
             uploadPills.addFromInput();
             if (uploadPills.getTags().length === 0) { $("#uploadError").text("Please add at least one tag.").show(); return; }
             $("#uploadError").hide();
+            uploadCanceled = false;
+            uploadAbortController = new AbortController();
+            const formData = new FormData(form);
+            formData.set("tags", $("#tagsHidden").val());
+            setUploadBusyState(true, "Preparing your post...");
+            startUploadSlowActionTimer();
 
             const mode = $("input[name='location_mode']:checked").val();
             if (mode === "manual") {
                 const address = sanitizeInput($("#manual_address").val().trim());
                 if (address) {
-                    $("#geoStatus").show().text("Looking up address…");
-                    const coords = await geocodeAddress(address);
+                    $("#geoStatus").show().text("Looking up address...");
+                    const coords = await geocodeAddress(address, { signal: uploadAbortController.signal });
+                    if (uploadCanceled) return;
                     if (coords) {
                         $("#latitude").val(coords.latitude);
                         $("#longitude").val(coords.longitude);
                         $("#geo_source").val("address");
                         $("#address_lookup_failed").val("");
+                        formData.set("latitude", coords.latitude);
+                        formData.set("longitude", coords.longitude);
+                        formData.set("geo_source", "address");
+                        formData.set("address_lookup_failed", "");
                         $("#geoStatus").text(`📍 Found: ${coords.latitude}, ${coords.longitude}`);
                     } else {
                         $("#latitude,#longitude,#geo_source").val("");
                         $("#address_lookup_failed").val("1");
-                        $("#geoStatus").show().text("Address not found — uploading without coordinates.");
+                        formData.set("latitude", "");
+                        formData.set("longitude", "");
+                        formData.set("geo_source", "");
+                        formData.set("address_lookup_failed", "1");
+                        $("#geoStatus").show().text("Address not found - uploading without coordinates.");
                     }
                 } else {
                     // Manual mode selected but address left blank
                     $("#latitude,#longitude,#geo_source").val("");
                     $("#address_lookup_failed").val("1");
-                    $("#geoStatus").show().text("No address entered — uploading without coordinates.");
+                    formData.set("latitude", "");
+                    formData.set("longitude", "");
+                    formData.set("geo_source", "");
+                    formData.set("address_lookup_failed", "1");
+                    $("#geoStatus").show().text("No address entered - uploading without coordinates.");
                 }
             } else {
-                if (exifCoords) { $("#latitude").val(exifCoords.latitude); $("#longitude").val(exifCoords.longitude); $("#geo_source").val("exif"); }
+                if (exifCoords) {
+                    $("#latitude").val(exifCoords.latitude);
+                    $("#longitude").val(exifCoords.longitude);
+                    $("#geo_source").val("exif");
+                    formData.set("latitude", exifCoords.latitude);
+                    formData.set("longitude", exifCoords.longitude);
+                    formData.set("geo_source", "exif");
+                    formData.set("address_lookup_failed", "");
+                }
                 else {
-                    $("#geoStatus").text("Requesting device location…");
+                    $("#geoStatus").text("Requesting device location...");
                     const bc = await getBrowserLocation();
-                    if (bc) { $("#latitude").val(bc.latitude); $("#longitude").val(bc.longitude); $("#geo_source").val("browser"); $("#geoStatus").text(`📍 Using device location (${bc.latitude}, ${bc.longitude})`); }
-                    else { $("#geoStatus").text("Location unavailable — uploading without coordinates."); }
+                    if (uploadCanceled) return;
+                    if (bc) {
+                        $("#latitude").val(bc.latitude);
+                        $("#longitude").val(bc.longitude);
+                        $("#geo_source").val("browser");
+                        formData.set("latitude", bc.latitude);
+                        formData.set("longitude", bc.longitude);
+                        formData.set("geo_source", "browser");
+                        formData.set("address_lookup_failed", "");
+                        $("#geoStatus").text(`Using device location (${bc.latitude}, ${bc.longitude})`);
+                    }
+                    else {
+                        formData.set("latitude", "");
+                        formData.set("longitude", "");
+                        formData.set("geo_source", "");
+                        $("#geoStatus").text("Location unavailable - uploading without coordinates.");
+                    }
                 }
             }
 
             $("#location_label").val(sanitizeInput($("#location_label").val()));
+            formData.set("location_label", $("#location_label").val());
+            formData.set("manual_address", $("#manual_address").val());
 
             try {
-                const res  = await fetch("/upload", { method: "POST", body: new FormData(form) });
+                setUploadBusyState(true, "Uploading your post...");
+                const res  = await fetch("/upload", {
+                    method: "POST",
+                    body: formData,
+                    signal: uploadAbortController.signal,
+                });
                 const json = await res.json();
+                if (uploadCanceled) return;
                 if (res.ok && json.ok) {
+                    setUploadBusyState(false);
                     closeUploadModal();
                     // Only refresh the feed if we're on the gallery page
                     if (document.getElementById("resultsGrid")) {
@@ -620,7 +755,18 @@ $(function () {
                         await loadMyUploads();
                     }
                 } else { $("#uploadError").text(json.error || "Upload failed.").show(); }
-            } catch (err) { console.error(err); $("#uploadError").text("Network error — please try again.").show(); }
+            } catch (err) {
+                if (err && err.name === "AbortError") {
+                    if (!uploadCanceled) $("#uploadError").text("Upload canceled.").show();
+                    return;
+                }
+                console.error(err);
+                $("#uploadError").text("Network error - please try again.").show();
+            } finally {
+                stopUploadSlowActionTimer();
+                uploadAbortController = null;
+                if (!uploadCanceled) setUploadBusyState(false);
+            }
         });
     }
 
@@ -671,6 +817,8 @@ $(function () {
             setMyDetailEditMode(false);
         });
 
+        $("#cancelMyDetailRequestBtn").on("click", cancelMyDetailAction);
+
         $("#saveMyUploadBtn").on("click", async function () {
             editPills.addFromInput();
             const docId = myDetailItem && myDetailItem._id;
@@ -684,14 +832,22 @@ $(function () {
             const addressChanged = address !== (original ? original.manual_address : "");
             const labelChanged = locLabel !== (original ? original.location_label : "");
             $("#myDetailError").hide();
+            myDetailCanceled = false;
+            myDetailAbortController = new AbortController();
+            if (tagsChanged || addressChanged || labelChanged) {
+                setMyDetailBusyState(true, "Saving your changes...");
+                startMyDetailSlowActionTimer();
+            }
             try {
                 if (tagsChanged) {
                     const tagsRes  = await fetch(`/my-uploads/edit-tags/${docId}`, {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ tags: tags.join(",") })
+                        body: JSON.stringify({ tags: tags.join(",") }),
+                        signal: myDetailAbortController.signal
                     });
                     const tagsJson = await tagsRes.json();
+                    if (myDetailCanceled) return;
                     if (!tagsRes.ok || !tagsJson.ok) {
                         $("#myDetailError").text(tagsJson.error || "Save failed.").show();
                         return;
@@ -707,7 +863,8 @@ $(function () {
                     if (addressChanged) {
                         if (address) {
                             $("#editAddressStatus").text("Looking up addressâ€¦");
-                            const coords = await geocodeAddress(address);
+                            const coords = await geocodeAddress(address, { signal: myDetailAbortController.signal });
+                            if (myDetailCanceled) return;
                             if (coords) {
                                 lat = coords.latitude;
                                 lon = coords.longitude;
@@ -724,12 +881,18 @@ $(function () {
                         }
                     }
 
+                    if (!myDetailBusy) {
+                        setMyDetailBusyState(true, "Saving your changes...");
+                    }
+
                     const locationRes  = await fetch(`/my-uploads/edit-location/${docId}`, {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ manual_address: address, location_label: locLabel, latitude: lat, longitude: lon })
+                        body: JSON.stringify({ manual_address: address, location_label: locLabel, latitude: lat, longitude: lon }),
+                        signal: myDetailAbortController.signal
                     });
                     const locationJson = await locationRes.json();
+                    if (myDetailCanceled) return;
                     if (!locationRes.ok || !locationJson.ok) {
                         $("#myDetailError").text(locationJson.error || "Save failed.").show();
                         return;
@@ -746,8 +909,20 @@ $(function () {
 
                 const newPills = (myDetailItem.tags || []).slice(0, 3).map(t => `<span class="card-tag">${t}</span>`).join("");
                 $(`[data-id="${docId}"]`).find(".card-tag-strip").html(newPills);
+                setMyDetailBusyState(false);
                 renderMyDetail(myDetailItem);
-            } catch (err) { console.error(err); $("#myDetailError").text("Network error.").show(); }
+            } catch (err) {
+                if (err && err.name === "AbortError") {
+                    if (!myDetailCanceled) $("#myDetailError").text("Save canceled.").show();
+                    return;
+                }
+                console.error(err);
+                $("#myDetailError").text("Network error.").show();
+            } finally {
+                stopMyDetailSlowActionTimer();
+                myDetailAbortController = null;
+                if (!myDetailCanceled) setMyDetailBusyState(false);
+            }
         });
 
         // ── Inline address editing ────────────────────────────────────────────
