@@ -81,6 +81,12 @@ const editPills   = makePillManager("editTagPillBox", "editTagTextInput", "editT
 // ── Gallery: active search tags ───────────────────────────────────────────────
 
 let activeTags = [];
+let nearbyFilter = {
+    enabled: false,
+    latitude: null,
+    longitude: null,
+    radiusKm: 25,
+};
 
 function renderActiveTags() {
     const container = $("#activeTags");
@@ -90,8 +96,7 @@ function renderActiveTags() {
         pill.find("button").on("click", () => {
             activeTags = activeTags.filter(t => t !== tag);
             renderActiveTags();
-            if (activeTags.length > 0) runSearch();
-            else { feedPage = 1; feedExhausted = false; $("#resultsGrid").empty(); $("#searchStatus").text(""); loadFeedPage(); }
+            refreshGalleryResults();
         });
         container.append(pill);
     });
@@ -102,7 +107,7 @@ function addSearchTag(tag) {
     if (!validateTag(clean) || activeTags.includes(clean)) return;
     activeTags.push(clean);
     renderActiveTags();
-    runSearch();
+    refreshGalleryResults();
 }
 
 
@@ -167,11 +172,15 @@ function appendCards(items, gridSelector) {
         } else if (hasNoAddress(item)) {
             badge = `<span class="road-warning addr">no address</span>`;
         }
+        const distanceBadge = item.distance_km != null
+            ? `<span class="distance-badge">${item.distance_km} km away</span>`
+            : "";
 
         const card = $(`
             <div class="grid-card" tabindex="0" role="button" aria-label="View details">
                 <img src="/uploads/${encodeURIComponent(item.image)}" alt="Tagged ${(item.tags || []).join(', ')}">
                 ${badge}
+                ${distanceBadge}
                 <div class="card-tag-strip">${tagPills}</div>
             </div>
         `);
@@ -190,7 +199,7 @@ function initInfiniteScroll() {
     const sentinel = document.getElementById("feedSentinel");
     if (!sentinel) return;
     const observer = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && activeTags.length === 0) loadFeedPage();
+        if (entries[0].isIntersecting && activeTags.length === 0 && !nearbyFilter.enabled) loadFeedPage();
     }, { rootMargin: "200px" });
     observer.observe(sentinel);
 }
@@ -244,6 +253,57 @@ function openDetail(item) {
 
     $("#detailOverlay").addClass("open");
     document.body.style.overflow = "hidden";
+}
+
+function buildNearbyQuery() {
+    const params = new URLSearchParams({
+        latitude: nearbyFilter.latitude,
+        longitude: nearbyFilter.longitude,
+        radius_km: nearbyFilter.radiusKm,
+    });
+    activeTags.forEach(tag => params.append("tags", tag));
+    return params.toString();
+}
+
+async function runNearbySearch() {
+    feedExhausted = true;
+    $("#resultsGrid").empty();
+    $("#feedLoader").text("");
+    $("#searchStatus").text("Finding nearby submissions...");
+    try {
+        const response = await fetch(`/gallery/nearby?${buildNearbyQuery()}`);
+        const data = await response.json();
+        if (!response.ok) {
+            $("#searchStatus").text(data.error || "Nearby search failed.");
+            return;
+        }
+        if (!data.images || data.images.length === 0) {
+            $("#searchStatus").text(`No nearby foragables found within ${nearbyFilter.radiusKm} km.`);
+            return;
+        }
+        $("#searchStatus").text(`Found ${data.images.length} nearby foragables within ${nearbyFilter.radiusKm} km.`);
+        appendCards(data.images, "#resultsGrid");
+    } catch (err) {
+        console.error(err);
+        $("#searchStatus").text("Network error occurred.");
+    }
+}
+
+function refreshGalleryResults() {
+    if (nearbyFilter.enabled && nearbyFilter.latitude != null && nearbyFilter.longitude != null) {
+        runNearbySearch();
+        return;
+    }
+    if (activeTags.length > 0) {
+        runSearch();
+        return;
+    }
+    feedPage = 1;
+    feedExhausted = false;
+    $("#resultsGrid").empty();
+    $("#searchStatus").text("");
+    $("#feedLoader").text("");
+    loadFeedPage();
 }
 
 function closeDetail() { $("#detailOverlay").removeClass("open"); document.body.style.overflow = ""; }
@@ -390,6 +450,35 @@ function getBrowserLocation() {
             ()=>resolve(null),{timeout:8000}
         );
     });
+}
+
+async function enableNearbyFilter() {
+    $("#nearbyStatus").text("Requesting your location...");
+    const location = await getBrowserLocation();
+    if (!location) {
+        $("#nearbyStatus").text("Could not get your location.");
+        return;
+    }
+    nearbyFilter.enabled = true;
+    nearbyFilter.latitude = location.latitude;
+    nearbyFilter.longitude = location.longitude;
+    nearbyFilter.radiusKm = parseFloat($("#radiusSelect").val() || "25");
+    $("#clearNearbyBtn").prop("hidden", false);
+    $("#nearbyStatus").text(`Showing posts within ${nearbyFilter.radiusKm} km of your location.`);
+    refreshGalleryResults();
+}
+
+function clearNearbyFilter() {
+    nearbyFilter.enabled = false;
+    nearbyFilter.latitude = null;
+    nearbyFilter.longitude = null;
+    nearbyFilter.radiusKm = null;
+    activeTags = [];
+    renderActiveTags();
+    $("#radiusSelect").val("");
+    $("#clearNearbyBtn").prop("hidden", true);
+    $("#nearbyStatus").text("");
+    refreshGalleryResults();
 }
 
 
@@ -790,7 +879,26 @@ $(function () {
             e.preventDefault();
             const v = $("#tag_input").val().trim();
             if (v) { addSearchTag(v); $("#tag_input").val(""); }
-            else if (activeTags.length > 0) runSearch();
+            else refreshGalleryResults();
+        });
+
+        $("#radiusSelect").on("change", function () {
+            const value = this.value;
+            if (!value) {
+                clearNearbyFilter();
+                return;
+            }
+            nearbyFilter.radiusKm = parseFloat(value);
+            if (nearbyFilter.enabled) {
+                $("#nearbyStatus").text(`Showing posts within ${nearbyFilter.radiusKm} km of your location.`);
+                refreshGalleryResults();
+                return;
+            }
+            enableNearbyFilter();
+        });
+
+        $("#clearNearbyBtn").on("click", function () {
+            clearNearbyFilter();
         });
 
         $("#detailOverlay").on("click", function(e){if(e.target===this)closeDetail();});

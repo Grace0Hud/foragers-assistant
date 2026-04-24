@@ -4,6 +4,7 @@ from utils.db import photo_collection, serialize_doc
 from utils.decorators import login_required
 from utils.emailer import bug_report_email_enabled, send_abuse_report_email, send_bug_report_email
 from utils.sanitize import (
+    sanitize_coordinate,
     sanitize_issue_description,
     sanitize_issue_subject,
     sanitize_optional_email,
@@ -164,6 +165,87 @@ def api_search():
         metadata={"tag_count": len(clean_tags), "result_count": len(docs)},
     )
     return jsonify({"tags": clean_tags, "images": docs})
+
+
+def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    from math import asin, cos, radians, sin, sqrt
+
+    earth_radius_km = 6371.0
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    )
+    return 2 * earth_radius_km * asin(sqrt(a))
+
+
+@gallery_bp.route("/gallery/nearby")
+@login_required
+def api_nearby():
+    try:
+        user_lat = sanitize_coordinate(request.args.get("latitude", ""), -90.0, 90.0)
+        user_lon = sanitize_coordinate(request.args.get("longitude", ""), -180.0, 180.0)
+        radius_km = float(request.args.get("radius_km", "25"))
+    except ValueError:
+        log_user_activity(
+            "nearby_filter_failed",
+            target_type="gallery",
+            metadata={"reason": "invalid_coordinates"},
+            success=False,
+        )
+        return jsonify({"error": "Invalid location or radius"}), 400
+
+    if not (0.1 <= radius_km <= 500):
+        log_user_activity(
+            "nearby_filter_failed",
+            target_type="gallery",
+            metadata={"reason": "invalid_radius"},
+            success=False,
+        )
+        return jsonify({"error": "Radius must be between 0.1 and 500 km"}), 400
+
+    raw_tags = request.args.getlist("tags")
+    clean_tags = []
+    for raw in raw_tags:
+        try:
+            clean_tags.append(sanitize_tag(raw.lower()))
+        except ValueError:
+            log_user_activity(
+                "nearby_filter_failed",
+                target_type="gallery",
+                metadata={"reason": "invalid_tag"},
+                success=False,
+            )
+            return jsonify({"error": f"Invalid tag: {raw}"}), 400
+
+    query = {"location_geo.latitude": {"$ne": None}, "location_geo.longitude": {"$ne": None}}
+    if clean_tags:
+        query["tags"] = {"$all": clean_tags}
+
+    docs = []
+    for doc in photo_collection.find(query, PHOTO_PROJECTION).sort("uploaded_at", -1):
+        geo = doc.get("location_geo") or {}
+        lat = geo.get("latitude")
+        lon = geo.get("longitude")
+        if lat is None or lon is None:
+            continue
+        distance_km = _distance_km(user_lat, user_lon, float(lat), float(lon))
+        if distance_km <= radius_km:
+            safe_doc = serialize_doc(doc)
+            safe_doc["distance_km"] = round(distance_km, 2)
+            docs.append(safe_doc)
+
+    log_user_activity(
+        "nearby_filter",
+        target_type="gallery",
+        metadata={
+            "tag_count": len(clean_tags),
+            "radius_km": radius_km,
+            "result_count": len(docs),
+        },
+    )
+    return jsonify({"tags": clean_tags, "radius_km": radius_km, "images": docs})
 
 
 @gallery_bp.route("/gallery/report-abuse", methods=["POST"])
