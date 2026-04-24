@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, session, redirect, url_for
+from pymongo.errors import DuplicateKeyError
 from werkzeug.security import check_password_hash, generate_password_hash
 from utils.db import user_collection
 from utils.sanitize import sanitize_username, sanitize_password
@@ -69,7 +70,14 @@ def user_signup():
         return render_template("signup.html", error="That username is already taken.",
                                previous_username=username)
 
-    user_collection.insert_one({"username": username, "password": generate_password_hash(password)})
+    try:
+        user_collection.insert_one(
+            {"username": username, "password": generate_password_hash(password)}
+        )
+    except DuplicateKeyError:
+        return render_template("signup.html", error="That username is already taken.",
+                               previous_username=username)
+
     session["username"] = username
     session.modified = True
     return redirect(url_for("gallery.get_gallery"))
