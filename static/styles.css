@@ -132,7 +132,8 @@ label {
 
 input[type="text"],
 input[type="password"],
-input[type="file"] {
+input[type="file"],
+textarea {
   width: 100%;
   padding: 0.9rem;
   border-radius: var(--radius-md);
@@ -145,10 +146,17 @@ input[type="file"] {
 
 input[type="text"]:focus,
 input[type="password"]:focus,
-input[type="file"]:focus {
+input[type="file"]:focus,
+textarea:focus {
   outline: none;
   border-color: var(--secondary_dark);
   box-shadow: 0 0 0 4px rgba(125,122,188,0.25);
+}
+
+textarea {
+  min-height: 8rem;
+  resize: vertical;
+  font: inherit;
 }
 
 button[type="submit"] {
@@ -208,6 +216,16 @@ input[disabled] {
   font-weight: 800;
   margin-bottom: 1.2rem;
   box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+.success-message {
+  background: var(--primary);
+  color: white;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  font-weight: 800;
+  margin-bottom: 1.2rem;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.18);
 }
 
 /* ── Tag pill input (upload & edit forms) ────────────────────────────────── */

@@ -69,6 +69,37 @@ def sanitize_location_label(value: str) -> str:
     return bleach.clean(v, tags=[], strip=True)
 
 
+def sanitize_optional_email(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("Email must be a string")
+    v = value.strip()
+    if not v:
+        return ""
+    if len(v) > 254:
+        raise ValueError("Email must be 254 characters or fewer")
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+        raise ValueError("Please enter a valid email address")
+    return bleach.clean(v, tags=[], strip=True)
+
+
+def sanitize_issue_subject(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("Subject must be a string")
+    v = value.strip()
+    if not (1 <= len(v) <= 120):
+        raise ValueError("Subject must be between 1 and 120 characters")
+    return bleach.clean(v, tags=[], strip=True)
+
+
+def sanitize_issue_description(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("Description must be a string")
+    v = value.strip()
+    if not (1 <= len(v) <= 4000):
+        raise ValueError("Description must be between 1 and 4000 characters")
+    return bleach.clean(v, tags=[], strip=True)
+
+
 def sanitize_coordinate(value: str, low: float, high: float) -> float:
     try:
         f = float(value)

@@ -165,6 +165,44 @@
       </p>
     </div>
 
+    <div class="help-section">
+      <h3 class="help-heading">Report a Bug or Issue</h3>
+      <p class="help-text">
+        Found a broken feature, confusing page, or upload problem? Send a report here and the site
+        owner will receive an email alert.
+      </p>
+      <form action="{{ url_for('gallery.report_issue') }}" method="POST" class="issue-report-form">
+        <p>
+          <label for="issue_subject">Subject</label>
+          <input type="text" id="issue_subject" name="subject" maxlength="120"
+                 value="{{ previous_issue_subject or '' }}"
+                 placeholder="e.g. Upload gets stuck on the help page" required>
+        </p>
+        <p>
+          <label for="issue_contact_email">Your Email (optional)</label>
+          <input type="text" id="issue_contact_email" name="contact_email" maxlength="254"
+                 value="{{ previous_issue_email or '' }}"
+                 placeholder="you@example.com">
+        </p>
+        <p>
+          <label for="issue_description">What happened?</label>
+          <textarea id="issue_description" name="description" rows="6" maxlength="4000"
+                    placeholder="Describe what you were doing, what you expected, and what went wrong."
+                    required>{{ previous_issue_description or '' }}</textarea>
+        </p>
+        {% if bug_report_error %}
+        <div class="error-message">{{ bug_report_error }}</div>
+        {% endif %}
+        {% if bug_report_success %}
+        <div class="success-message">{{ bug_report_success }}</div>
+        {% endif %}
+        {% if not bug_report_email_enabled %}
+        <div class="error-message">Bug report email is not configured yet. Add the SMTP settings in `.env` to enable alerts.</div>
+        {% endif %}
+        <button type="submit" {% if not bug_report_email_enabled %}disabled{% endif %}>Send Report</button>
+      </form>
+    </div>
+
     <!-- ── Upload modal ───────────────────────────────────────────────────── -->
     {% if username %}
     <div id="uploadOverlay" aria-modal="true" role="dialog" aria-label="Upload foragable">

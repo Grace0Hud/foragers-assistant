@@ -12,3 +12,11 @@ class Config:
     FLASK_ENV    = os.getenv("FLASK_ENV", "development")
     PHOTO_COLLECTION = "test-photos" if FLASK_ENV == "dev" else "user-photos"
     GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "")
+    SMTP_HOST = os.getenv("SMTP_HOST", "")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+    SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+    SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").lower() == "true"
+    BUG_REPORT_TO_EMAIL = os.getenv("BUG_REPORT_TO_EMAIL", "")
+    BUG_REPORT_FROM_EMAIL = os.getenv("BUG_REPORT_FROM_EMAIL", SMTP_USERNAME)

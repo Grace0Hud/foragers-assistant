@@ -2,7 +2,13 @@ from flask import Blueprint, render_template, request, jsonify, session
 from utils.audit import log_user_activity
 from utils.db import photo_collection, serialize_doc
 from utils.decorators import login_required
-from utils.sanitize import sanitize_tag
+from utils.emailer import bug_report_email_enabled, send_bug_report_email
+from utils.sanitize import (
+    sanitize_issue_description,
+    sanitize_issue_subject,
+    sanitize_optional_email,
+    sanitize_tag,
+)
 
 gallery_bp = Blueprint("gallery", __name__)
 
@@ -33,7 +39,70 @@ def get_gallery():
 
 @gallery_bp.route("/help")
 def help_page():
-    return render_template("help.html", username=session.get("username"))
+    return render_template(
+        "help.html",
+        username=session.get("username"),
+        bug_report_email_enabled=bug_report_email_enabled(),
+    )
+
+
+@gallery_bp.route("/help/report-issue", methods=["POST"])
+def report_issue():
+    previous_subject = request.form.get("subject", "")
+    previous_email = request.form.get("contact_email", "")
+    previous_description = request.form.get("description", "")
+
+    try:
+        subject = sanitize_issue_subject(previous_subject)
+        reporter_email = sanitize_optional_email(previous_email)
+        description = sanitize_issue_description(previous_description)
+    except ValueError as exc:
+        log_user_activity(
+            "bug_report_failed",
+            target_type="help",
+            metadata={"reason": "validation_error"},
+            success=False,
+        )
+        return render_template(
+            "help.html",
+            username=session.get("username"),
+            bug_report_error=str(exc),
+            bug_report_email_enabled=bug_report_email_enabled(),
+            previous_issue_subject=previous_subject,
+            previous_issue_email=previous_email,
+            previous_issue_description=previous_description,
+        ), 400
+
+    try:
+        send_bug_report_email(subject, description, reporter_email)
+    except Exception:
+        log_user_activity(
+            "bug_report_failed",
+            target_type="help",
+            metadata={"reason": "email_send_failed"},
+            success=False,
+        )
+        return render_template(
+            "help.html",
+            username=session.get("username"),
+            bug_report_error="Bug report could not be sent right now. Please try again later.",
+            bug_report_email_enabled=bug_report_email_enabled(),
+            previous_issue_subject=subject,
+            previous_issue_email=reporter_email,
+            previous_issue_description=description,
+        ), 500
+
+    log_user_activity(
+        "bug_report_submitted",
+        target_type="help",
+        metadata={"has_contact_email": bool(reporter_email)},
+    )
+    return render_template(
+        "help.html",
+        username=session.get("username"),
+        bug_report_success="Thanks. Your issue report was sent.",
+        bug_report_email_enabled=bug_report_email_enabled(),
+    )
 
 
 @gallery_bp.route("/gallery/feed")
